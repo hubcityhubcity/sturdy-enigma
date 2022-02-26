@@ -1,0 +1,178 @@
+<template>
+  <TmPage
+    :managed="true"
+    :loading="$apollo.queries.transactions.loading"
+    :loaded="!$apollo.queries.transactions.loading"
+    :error="$apollo.queries.transactions.error"
+    :data-empty="transactions.length === 0"
+    data-title="Transactions"
+    :sign-in-required="true"
+    :hide-header="true"
+  >
+    <DataEmptyTx slot="no-data" />
+    <template slot="managed-body">
+      <div v-infinite-scroll="loadMore" infinite-scroll-distance="80">
+        <TransactionList
+          :transactions="transactions"
+          :address="address"
+          :validators="validatorsAddressMap"
+        />
+      </div>
+      <br />
+      <TmDataMsg icon="calendar_today">
+        <div slot="title">
+          Looking for older transactions?
+        </div>
+        <div slot="subtitle">
+          Unfortunately, we can't display transactions from previous chains
+          right now.
+          <a class="intercom-button" @click="handleContactUs()">Let us know</a>
+          if you'd like access these transactions.
+        </div>
+      </TmDataMsg>
+    </template>
+  </TmPage>
+</template>
+
+<script>
+import { mapGetters } from "vuex"
+import DataEmptyTx from "common/TmDataEmptyTx"
+import TmDataMsg from "common/TmDataMsg"
+import TmPage from "common/TmPage"
+import TransactionList from "transactions/TransactionList"
+import config from "src/../config"
+import gql from "graphql-tag"
+
+export default {
+  name: `page-transactions`,
+  components: {
+    TransactionList,
+    DataEmptyTx,
+    TmDataMsg,
+    TmPage
+  },
+  data: () => ({
+    showing: 15,
+    validators: [],
+    transactions: []
+  }),
+  computed: {
+    ...mapGetters([`address`, `network`]),
+    validatorsAddressMap() {
+      const names = {}
+      this.validators.forEach(item => {
+        names[item.operatorAddress] = item
+      })
+      return names
+    },
+    dataEmpty() {
+      return this.transactions.length === 0
+    }
+  },
+  methods: {
+    loadMore() {
+      this.showing += 10
+    },
+    handleContactUs() {
+      if (config.mobileApp) {
+        this.$store.dispatch(`displayMessenger`)
+      } else {
+        window.location.href = `mailto:contact@lunie.io`
+      }
+    }
+  },
+  apollo: {
+    transactions: {
+      query: gql`
+        query transactions($networkId: String!, $address: String!) {
+          transactions(networkId: $networkId, address: $address) {
+            hash
+            type
+            group
+            height
+            timestamp
+            gasUsed
+            fee {
+              amount
+              denom
+            }
+            value
+            withdrawValidators
+          }
+        }
+      `,
+      skip() {
+        return !this.address
+      },
+      variables() {
+        return {
+          networkId: this.network,
+          address: this.address
+        }
+      },
+      update: result => {
+        if (Array.isArray(result.transactions)) {
+          return result.transactions.map(tx => ({
+            ...tx,
+            timestamp: new Date(tx.timestamp),
+            value: JSON.parse(tx.value)
+          }))
+        }
+        return []
+      },
+      subscribeToMore: {
+        document: gql`
+          subscription($networkId: String!, $address: String!) {
+            userTransactionAdded(networkId: $networkId, address: $address) {
+              hash
+              type
+              group
+              height
+              timestamp
+              gasUsed
+              fee {
+                amount
+                denom
+              }
+              value
+            }
+          }
+        `,
+        updateQuery: (previousResult, { subscriptionData }) => {
+          return {
+            transactions: [
+              subscriptionData.data.userTransactionAdded,
+              ...previousResult.transactions
+            ]
+          }
+        },
+        variables() {
+          return {
+            networkId: this.network,
+            address: this.address
+          }
+        }
+      }
+    },
+    validators: {
+      query: gql`
+        query validators($networkId: String!) {
+          validators(networkId: $networkId) {
+            name
+            operatorAddress
+            picture
+          }
+        }
+      `,
+      skip() {
+        return !this.address
+      },
+      variables() {
+        return {
+          networkId: this.network
+        }
+      }
+    }
+  }
+}
+</script>
