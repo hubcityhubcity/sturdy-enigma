@@ -1,0 +1,853 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`ActionModal back button renders and functions 1`] = `
+<div
+  class="action-modal"
+  name="slide-fade"
+  tabindex="0"
+>
+  <div
+    class="action-modal-icon action-modal-prev"
+    id="prevBtn"
+  >
+    <i
+      class="material-icons"
+    >
+      arrow_back
+    </i>
+  </div>
+   
+  <div
+    class="action-modal-icon action-modal-close"
+    id="closeBtn"
+  >
+    <i
+      class="material-icons"
+    >
+      close
+    </i>
+  </div>
+   
+  <div
+    class="action-modal-header"
+  >
+    <span
+      class="action-modal-title"
+    >
+      Action Modal
+    </span>
+     
+    <!---->
+     
+    <!---->
+  </div>
+   
+  <featurenotavailable-stub
+    feature="Action Modal"
+  />
+</div>
+`;
+
+exports[`ActionModal runs validation and changes step on sign step should dispaly warning when using an address not in the extension 1`] = `
+<div
+  class="action-modal"
+  name="slide-fade"
+  tabindex="0"
+>
+  <div
+    class="action-modal-icon action-modal-prev"
+    id="prevBtn"
+  >
+    <i
+      class="material-icons"
+    >
+      arrow_back
+    </i>
+  </div>
+   
+  <div
+    class="action-modal-icon action-modal-close"
+    id="closeBtn"
+  >
+    <i
+      class="material-icons"
+    >
+      close
+    </i>
+  </div>
+   
+  <div
+    class="action-modal-header"
+  >
+    <span
+      class="action-modal-title"
+    >
+      Action Modal
+    </span>
+     
+    <!---->
+     
+    <p
+      class="form-message notice extension-address"
+    >
+      
+        The address you are trying to send with is not available in the
+        extension.
+      
+    </p>
+  </div>
+   
+  <featurenotavailable-stub
+    feature="Action Modal"
+  />
+</div>
+`;
+
+exports[`ActionModal should show the action modal on success 1`] = `
+<div
+  class="action-modal"
+  name="slide-fade"
+  tabindex="0"
+>
+  <!---->
+   
+  <div
+    class="action-modal-icon action-modal-close"
+    id="closeBtn"
+  >
+    <i
+      class="material-icons"
+    >
+      close
+    </i>
+  </div>
+   
+  <div
+    class="action-modal-header"
+  >
+    <span
+      class="action-modal-title"
+    >
+      Action Modal
+    </span>
+     
+    <!---->
+     
+    <!---->
+  </div>
+   
+  <featurenotavailable-stub
+    feature="Action Modal"
+  />
+</div>
+`;
+
+exports[`ActionModal should show the action modal waiting on inclusion 1`] = `
+<div
+  class="action-modal"
+  name="slide-fade"
+  tabindex="0"
+>
+  <!---->
+   
+  <div
+    class="action-modal-icon action-modal-close"
+    id="closeBtn"
+  >
+    <i
+      class="material-icons"
+    >
+      close
+    </i>
+  </div>
+   
+  <div
+    class="action-modal-header"
+  >
+    <span
+      class="action-modal-title"
+    >
+      Action Modal
+    </span>
+     
+    <!---->
+     
+    <!---->
+  </div>
+   
+  <featurenotavailable-stub
+    feature="Action Modal"
+  />
+</div>
+`;
+
+exports[`ActionModal should show the action modal when user has logged in with explore on fees step 1`] = `
+<div
+  class="action-modal"
+  name="slide-fade"
+  tabindex="0"
+>
+  <div
+    class="action-modal-icon action-modal-prev"
+    id="prevBtn"
+  >
+    <i
+      class="material-icons"
+    >
+      arrow_back
+    </i>
+  </div>
+   
+  <div
+    class="action-modal-icon action-modal-close"
+    id="closeBtn"
+  >
+    <i
+      class="material-icons"
+    >
+      close
+    </i>
+  </div>
+   
+  <div
+    class="action-modal-header"
+  >
+    <span
+      class="action-modal-title"
+    >
+      Action Modal
+    </span>
+     
+    <!---->
+     
+    <!---->
+  </div>
+   
+  <featurenotavailable-stub
+    feature="Action Modal"
+  />
+</div>
+`;
+
+exports[`ActionModal should show the action modal when user has logged in with explore on sign step 1`] = `
+<div
+  class="action-modal"
+  name="slide-fade"
+  tabindex="0"
+>
+  <div
+    class="action-modal-icon action-modal-prev"
+    id="prevBtn"
+  >
+    <i
+      class="material-icons"
+    >
+      arrow_back
+    </i>
+  </div>
+   
+  <div
+    class="action-modal-icon action-modal-close"
+    id="closeBtn"
+  >
+    <i
+      class="material-icons"
+    >
+      close
+    </i>
+  </div>
+   
+  <div
+    class="action-modal-header"
+  >
+    <span
+      class="action-modal-title"
+    >
+      Action Modal
+    </span>
+     
+    <!---->
+     
+    <!---->
+  </div>
+   
+  <featurenotavailable-stub
+    feature="Action Modal"
+  />
+</div>
+`;
+
+exports[`ActionModal should show the action modal when user has logged in with explore sending 1`] = `
+<div
+  class="action-modal"
+  name="slide-fade"
+  tabindex="0"
+>
+  <!---->
+   
+  <div
+    class="action-modal-icon action-modal-close"
+    id="closeBtn"
+  >
+    <i
+      class="material-icons"
+    >
+      close
+    </i>
+  </div>
+   
+  <div
+    class="action-modal-header"
+  >
+    <span
+      class="action-modal-title"
+    >
+      Action Modal
+    </span>
+     
+    <!---->
+     
+    <!---->
+  </div>
+   
+  <featurenotavailable-stub
+    feature="Action Modal"
+  />
+</div>
+`;
+
+exports[`ActionModal should show the action modal when user has logged in with extension on fees step 1`] = `
+<div
+  class="action-modal"
+  name="slide-fade"
+  tabindex="0"
+>
+  <div
+    class="action-modal-icon action-modal-prev"
+    id="prevBtn"
+  >
+    <i
+      class="material-icons"
+    >
+      arrow_back
+    </i>
+  </div>
+   
+  <div
+    class="action-modal-icon action-modal-close"
+    id="closeBtn"
+  >
+    <i
+      class="material-icons"
+    >
+      close
+    </i>
+  </div>
+   
+  <div
+    class="action-modal-header"
+  >
+    <span
+      class="action-modal-title"
+    >
+      Action Modal
+    </span>
+     
+    <!---->
+     
+    <!---->
+  </div>
+   
+  <featurenotavailable-stub
+    feature="Action Modal"
+  />
+</div>
+`;
+
+exports[`ActionModal should show the action modal when user has logged in with extension on sign step 1`] = `
+<div
+  class="action-modal"
+  name="slide-fade"
+  tabindex="0"
+>
+  <div
+    class="action-modal-icon action-modal-prev"
+    id="prevBtn"
+  >
+    <i
+      class="material-icons"
+    >
+      arrow_back
+    </i>
+  </div>
+   
+  <div
+    class="action-modal-icon action-modal-close"
+    id="closeBtn"
+  >
+    <i
+      class="material-icons"
+    >
+      close
+    </i>
+  </div>
+   
+  <div
+    class="action-modal-header"
+  >
+    <span
+      class="action-modal-title"
+    >
+      Action Modal
+    </span>
+     
+    <!---->
+     
+    <p
+      class="form-message notice extension-address"
+    >
+      
+        The address you are trying to send with is not available in the
+        extension.
+      
+    </p>
+  </div>
+   
+  <featurenotavailable-stub
+    feature="Action Modal"
+  />
+</div>
+`;
+
+exports[`ActionModal should show the action modal when user has logged in with extension sending 1`] = `
+<div
+  class="action-modal"
+  name="slide-fade"
+  tabindex="0"
+>
+  <!---->
+   
+  <div
+    class="action-modal-icon action-modal-close"
+    id="closeBtn"
+  >
+    <i
+      class="material-icons"
+    >
+      close
+    </i>
+  </div>
+   
+  <div
+    class="action-modal-header"
+  >
+    <span
+      class="action-modal-title"
+    >
+      Action Modal
+    </span>
+     
+    <!---->
+     
+    <p
+      class="form-message notice extension-address"
+    >
+      
+        The address you are trying to send with is not available in the
+        extension.
+      
+    </p>
+  </div>
+   
+  <featurenotavailable-stub
+    feature="Action Modal"
+  />
+</div>
+`;
+
+exports[`ActionModal should show the action modal when user has logged in with ledger on fees step 1`] = `
+<div
+  class="action-modal"
+  name="slide-fade"
+  tabindex="0"
+>
+  <div
+    class="action-modal-icon action-modal-prev"
+    id="prevBtn"
+  >
+    <i
+      class="material-icons"
+    >
+      arrow_back
+    </i>
+  </div>
+   
+  <div
+    class="action-modal-icon action-modal-close"
+    id="closeBtn"
+  >
+    <i
+      class="material-icons"
+    >
+      close
+    </i>
+  </div>
+   
+  <div
+    class="action-modal-header"
+  >
+    <span
+      class="action-modal-title"
+    >
+      Action Modal
+    </span>
+     
+    <!---->
+     
+    <!---->
+  </div>
+   
+  <featurenotavailable-stub
+    feature="Action Modal"
+  />
+</div>
+`;
+
+exports[`ActionModal should show the action modal when user has logged in with ledger on sign step 1`] = `
+<div
+  class="action-modal"
+  name="slide-fade"
+  tabindex="0"
+>
+  <div
+    class="action-modal-icon action-modal-prev"
+    id="prevBtn"
+  >
+    <i
+      class="material-icons"
+    >
+      arrow_back
+    </i>
+  </div>
+   
+  <div
+    class="action-modal-icon action-modal-close"
+    id="closeBtn"
+  >
+    <i
+      class="material-icons"
+    >
+      close
+    </i>
+  </div>
+   
+  <div
+    class="action-modal-header"
+  >
+    <span
+      class="action-modal-title"
+    >
+      Action Modal
+    </span>
+     
+    <!---->
+     
+    <!---->
+  </div>
+   
+  <featurenotavailable-stub
+    feature="Action Modal"
+  />
+</div>
+`;
+
+exports[`ActionModal should show the action modal when user has logged in with ledger sending 1`] = `
+<div
+  class="action-modal"
+  name="slide-fade"
+  tabindex="0"
+>
+  <!---->
+   
+  <div
+    class="action-modal-icon action-modal-close"
+    id="closeBtn"
+  >
+    <i
+      class="material-icons"
+    >
+      close
+    </i>
+  </div>
+   
+  <div
+    class="action-modal-header"
+  >
+    <span
+      class="action-modal-title"
+    >
+      Action Modal
+    </span>
+     
+    <!---->
+     
+    <!---->
+  </div>
+   
+  <featurenotavailable-stub
+    feature="Action Modal"
+  />
+</div>
+`;
+
+exports[`ActionModal should show the action modal when user has logged in with local on fees step 1`] = `
+<div
+  class="action-modal"
+  name="slide-fade"
+  tabindex="0"
+>
+  <div
+    class="action-modal-icon action-modal-prev"
+    id="prevBtn"
+  >
+    <i
+      class="material-icons"
+    >
+      arrow_back
+    </i>
+  </div>
+   
+  <div
+    class="action-modal-icon action-modal-close"
+    id="closeBtn"
+  >
+    <i
+      class="material-icons"
+    >
+      close
+    </i>
+  </div>
+   
+  <div
+    class="action-modal-header"
+  >
+    <span
+      class="action-modal-title"
+    >
+      Action Modal
+    </span>
+     
+    <!---->
+     
+    <!---->
+  </div>
+   
+  <featurenotavailable-stub
+    feature="Action Modal"
+  />
+</div>
+`;
+
+exports[`ActionModal should show the action modal when user has logged in with local on sign step 1`] = `
+<div
+  class="action-modal"
+  name="slide-fade"
+  tabindex="0"
+>
+  <div
+    class="action-modal-icon action-modal-prev"
+    id="prevBtn"
+  >
+    <i
+      class="material-icons"
+    >
+      arrow_back
+    </i>
+  </div>
+   
+  <div
+    class="action-modal-icon action-modal-close"
+    id="closeBtn"
+  >
+    <i
+      class="material-icons"
+    >
+      close
+    </i>
+  </div>
+   
+  <div
+    class="action-modal-header"
+  >
+    <span
+      class="action-modal-title"
+    >
+      Action Modal
+    </span>
+     
+    <!---->
+     
+    <!---->
+  </div>
+   
+  <featurenotavailable-stub
+    feature="Action Modal"
+  />
+</div>
+`;
+
+exports[`ActionModal should show the action modal when user has logged in with local sending 1`] = `
+<div
+  class="action-modal"
+  name="slide-fade"
+  tabindex="0"
+>
+  <!---->
+   
+  <div
+    class="action-modal-icon action-modal-close"
+    id="closeBtn"
+  >
+    <i
+      class="material-icons"
+    >
+      close
+    </i>
+  </div>
+   
+  <div
+    class="action-modal-header"
+  >
+    <span
+      class="action-modal-title"
+    >
+      Action Modal
+    </span>
+     
+    <!---->
+     
+    <!---->
+  </div>
+   
+  <featurenotavailable-stub
+    feature="Action Modal"
+  />
+</div>
+`;
+
+exports[`ActionModal should show the action modal when user hasn't logged in 1`] = `
+<div
+  class="action-modal"
+  name="slide-fade"
+  tabindex="0"
+>
+  <!---->
+   
+  <div
+    class="action-modal-icon action-modal-close"
+    id="closeBtn"
+  >
+    <i
+      class="material-icons"
+    >
+      close
+    </i>
+  </div>
+   
+  <div
+    class="action-modal-header"
+  >
+    <span
+      class="action-modal-title"
+    >
+      Sign in required
+    </span>
+     
+    <!---->
+     
+    <!---->
+  </div>
+   
+  <featurenotavailable-stub
+    feature="Action Modal"
+  />
+</div>
+`;
+
+exports[`ActionModal shows a feature unavailable message 1`] = `
+<div
+  class="action-modal"
+  name="slide-fade"
+  tabindex="0"
+>
+  <!---->
+   
+  <div
+    class="action-modal-icon action-modal-close"
+    id="closeBtn"
+  >
+    <i
+      class="material-icons"
+    >
+      close
+    </i>
+  </div>
+   
+  <div
+    class="action-modal-header"
+  >
+    <span
+      class="action-modal-title"
+    >
+      Action Modal
+    </span>
+     
+    <!---->
+     
+    <!---->
+  </div>
+   
+  <featurenotavailable-stub
+    feature="Action Modal"
+  />
+</div>
+`;
+
+exports[`ActionModal windows shows windows warning 1`] = `
+<div
+  class="action-modal"
+  name="slide-fade"
+  tabindex="0"
+>
+  <!---->
+   
+  <div
+    class="action-modal-icon action-modal-close"
+    id="closeBtn"
+  >
+    <i
+      class="material-icons"
+    >
+      close
+    </i>
+  </div>
+   
+  <div
+    class="action-modal-header"
+  >
+    <span
+      class="action-modal-title"
+    >
+      Sign in required
+    </span>
+     
+    <!---->
+     
+    <!---->
+  </div>
+   
+  <featurenotavailable-stub
+    feature="Action Modal"
+  />
+</div>
+`;

@@ -1,0 +1,312 @@
+version: 2.1
+
+# Here we define all the paths and versions of images we want to play with
+aliases:
+  # Define paths and never think about them again
+  - &WORKSPACE /tmp/voyager
+  # Pick docker versions here only, then use the aliases in the executors definition
+  - &docker-node circleci/node:10.15.3
+  - &docker-browsers circleci/node:10.15.3-browsers
+
+# reusable commands
+commands:
+  yarn-install:
+    description: "[YARN] update and install"
+    steps:
+      - restore_cache:
+          keys:
+            - v5-dependencies-root-{{ checksum "yarn.lock" }}
+            - v5-dependencies-root-
+
+      - run: yarn install
+      - save_cache:
+          paths:
+            - yarn.lock
+            - node_modules
+          key: v5-dependencies-root-{{ checksum "yarn.lock" }}
+
+  yarn-install-extension:
+    description: "[YARN] update and install"
+    steps:
+      - restore_cache:
+          keys:
+            - v2-dependencies-extension-{{ checksum "yarn.lock" }}
+            - v2-dependencies-extension-
+
+      - run: yarn install
+      - save_cache:
+          paths:
+            - yarn.lock
+            - node_modules
+          key: v2-dependencies-extension-{{ checksum "yarn.lock" }}
+
+# a reusable executor
+executors:
+  web:
+    docker:
+      - image: *docker-browsers
+    working_directory: *WORKSPACE
+
+  node:
+    docker:
+      - image: *docker-node
+    working_directory: *WORKSPACE
+
+jobs:
+  prep:
+    executor: web
+    steps:
+      - attach_workspace:
+          at: *WORKSPACE
+      - checkout
+      - yarn-install
+      - persist_to_workspace:
+          root: *WORKSPACE
+          paths:
+            - "*"
+
+  pendingUpdated:
+    executor: node
+    steps:
+      - attach_workspace:
+          at: *WORKSPACE
+      - run: yarn add simsala
+      - run: node node_modules/simsala/src/cli.js check --pending-path ./changes
+
+  lint:
+    executor: node
+    steps:
+      - attach_workspace:
+          at: *WORKSPACE
+      - run: yarn run lint --max-warnings 0
+
+  testUnit:
+    executor: web
+    steps:
+      - attach_workspace:
+          at: *WORKSPACE
+      - run:
+          name: Test
+          command: |
+            yarn run test:unit --coverage --maxWorkers=2
+            bash <(curl -s https://codecov.io/bash)
+          no_output_timeout: 180
+
+  security:
+    executor: web
+    steps:
+      - attach_workspace:
+          at: *WORKSPACE
+      - run:
+          name: Audit
+          command: |
+            set +e
+
+            SUMMARY="$(yarn audit | grep Severity)"
+            VULNERABILITIES=".*(High|Critical).*"
+
+            if [[ $SUMMARY =~ $VULNERABILITIES ]]; then
+              echo "Unsafe dependencies found: $SUMMARY" >&2
+              exit 1
+            fi
+            echo "Your dependencies are secure enough: $SUMMARY"
+            exit 0
+
+  testE2e:
+    machine: true
+    working_directory: *WORKSPACE
+    steps:
+      - attach_workspace:
+          at: *WORKSPACE
+      - add_ssh_keys:
+          fingerprints:
+            - "65:5f:43:fd:be:48:c8:45:d5:39:ef:86:14:d6:e1:12"
+      - run:
+          name: Add GitHub to known hosts
+          command: |
+            mkdir -p ~/.ssh
+            touch ~/.ssh/known_hosts
+            ssh-keygen -R github.com
+            ssh-keyscan github.com >> ~/.ssh/known_hosts
+      - run:
+          name: checkout backend
+          command: |
+            git clone git@github.com:luniehq/lunie-backend.git
+            cd lunie-backend
+            git checkout origin/fabo/e2e-restructure
+      - run: 
+          name: Use NVM
+          command: |
+            echo 'export NVM_DIR="/opt/circleci/.nvm"' >> $BASH_ENV
+            echo ' [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"' >> $BASH_ENV
+      - run:
+          name: Install node version
+          command: |
+            nvm install v10.13.0
+            nvm alias default v10.13.0
+      - run:
+          name: Run testnet
+          command: |
+            cd lunie-backend
+            npm run start -- -d
+      - run:
+          # needs to be done in CI to be sure it is build once we start the tests
+          name: Build for E2E test
+          command: npm run test:e2e:build
+          environment:
+            VUE_APP_GRAPHQL_URL: http://127.0.0.1:4000 # Browserstack tunneling doesn't work with "localhost"
+            NETWORK: local-cosmos-hub-testnet # Connect directly to the testnet
+      - run:
+          name: Test
+          command: npm run serve:dist & npm run test:e2e:browserstack
+          no_output_timeout: 120
+      - store_artifacts:
+          path: ./screenshots
+          when: on_fail
+
+  testExtension:
+    docker:
+      # Primary container image where all steps run.
+     - image: *docker-browsers
+      # Secondary container image on common network which runs the testnet
+     - image: lunieio/testnet:v0.34.3
+    working_directory: *WORKSPACE
+    steps:
+      - run:
+          name: Avoid hosts unknown for github
+          command: mkdir ~/.ssh/ && echo -e "Host github.com\n\tStrictHostKeyChecking no\n" > ~/.ssh/config
+      - run:
+          name: Checkout Extension
+          command: |
+            git clone git@github.com:luniehq/lunie-browser-extension.git .
+      - attach_workspace:
+          at: /tmp/voyager/lunie
+      - yarn-install-extension
+      - setup_remote_docker
+      - run:
+          name: Build
+          command: |
+            npm run build:dev
+            node ./scripts/add-pem-key.js
+            cd lunie
+            npm run test:e2e:build
+            yarn certificates
+      - run:
+          name: Install Chrome
+          command: |
+            wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
+            sudo sh -c 'echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google.list'
+            sudo apt-get update
+            sudo apt-get -y install google-chrome-stable
+      - run:
+          name: Test
+          command: npm run test:e2e:start-lunie & yarn test:e2e
+          no_output_timeout: 120
+      - store_artifacts:
+          path: ./screenshots_extension
+          when: on_fail
+
+  # Create release.
+  release:
+    executor: node
+    steps:
+      - checkout
+      - run: |
+          yarn add simsala
+          git config user.email "bot@lunie.io"
+          git config user.name "Lunie Bot"
+          node node_modules/simsala/src/cli.js release-candidate --semver prerelease --pending-path ./changes --owner luniehq --repository lunie --token $GIT_BOT_TOKEN --message "Please manually test before merging this to master"
+      
+  # Push merges to master immediately back to develop to stay in sync
+  mergeBack:
+    executor: node
+    steps:
+      - checkout
+      - run:
+          command: |
+            git config user.email "bot@lunie.io"
+            git config user.name "Lunie Bot"
+            git remote add bot https://${GIT_BOT_TOKEN}@github.com/luniehq/lunie.git
+            git checkout develop -f
+            git pull -f --no-edit
+            git merge origin/master --no-edit
+            git push
+
+
+workflows:
+  version: 2
+  test:
+    jobs:
+      - prep
+
+      # Static checks before
+      - pendingUpdated:
+          requires:
+            - prep
+          filters:
+            branches:
+              ignore: 
+                - release
+                - master
+                - develop
+                - /release-candidate.*/
+
+      - security:
+          requires:
+            - prep
+          filters:
+            branches:
+              ignore: release
+
+      - lint:
+          requires:
+            - prep
+          filters:
+            branches:
+              ignore: release
+
+      - testUnit:
+          requires:
+            - prep
+          filters:
+            branches:
+              ignore: release
+
+      - testE2e:
+          requires:
+            - prep
+          filters:
+            branches:
+              ignore:
+                - release
+                - master
+
+      - testExtension:
+          requires:
+            - prep
+
+  # Every UTC midnight we go on develop and release
+  release:
+    triggers:
+      - schedule:
+          cron: "0 0 * * *"
+          filters:
+            branches:
+              only:
+                - develop
+    jobs:
+      - release
+
+  releaseManually:
+    jobs:
+      - release:
+          filters:
+            branches:
+              only: release
+
+  mergeBack:
+    jobs:
+      - mergeBack:
+          filters:
+            branches:
+              only: master
