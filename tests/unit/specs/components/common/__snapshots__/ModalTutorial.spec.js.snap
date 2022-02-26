@@ -1,0 +1,84 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`TmModal has the expected html structure 1`] = `
+<div
+  class="modal-tutorial"
+  steps="[object Object],[object Object],[object Object],[object Object]"
+  tabindex="0"
+>
+  <main
+    class="modal-tutorial-main"
+  >
+    <div
+      class="modal-tutorial-header"
+    >
+      <div
+        class="modal-tutorial-button-container"
+      >
+        <div>
+          <a
+            href="#"
+          >
+            <i
+              class="material-icons chevron_left"
+            />
+          </a>
+           
+          <a
+            href="#"
+          >
+            <i
+              class="material-icons chevron_right"
+            />
+          </a>
+        </div>
+         
+        <a
+          href="#"
+        >
+          <i
+            class="material-icons close"
+          />
+        </a>
+      </div>
+       
+      <div
+        class="top-bg red"
+      />
+    </div>
+     
+    <div
+      class="content"
+    >
+      <div
+        class="steps"
+      >
+        <span
+          class="current-step"
+        >
+          STEP 1
+        </span>
+         
+        <div
+          class="steps-container"
+        >
+          <span
+            class="step completed"
+          />
+        </div>
+      </div>
+        
+      <button
+        class="button primary"
+      >
+        
+            Read the full guide
+            
+        <i
+          class="material-icons arrow_forward final-step"
+        />
+      </button>
+    </div>
+  </main>
+</div>
+`;
