@@ -1,0 +1,30 @@
+name: Extension Deployment Workflow
+
+on:
+  pull_request:
+    branches:
+      - "*"
+    paths:
+      - 'extension/**'
+env:
+  WORKING_DIRECTORY: ./extension
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v1
+      - name: Setup Node.js
+        uses: actions/setup-node@v2-beta
+        with:
+          node-version: '12'
+      - name: NPM Install
+        uses: bahmutov/npm-install@v1
+      - name: Build Extension
+        run: LUNIE_API=${{ secrets.LUNIE_API }} yarn build
+        working-directory: ${{env.WORKING_DIRECTORY}}
+        env:
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN_EXTENSION }}
+      - name: Zip Build Files
+        run: yarn build-zip
+        working-directory: ${{env.WORKING_DIRECTORY}}
