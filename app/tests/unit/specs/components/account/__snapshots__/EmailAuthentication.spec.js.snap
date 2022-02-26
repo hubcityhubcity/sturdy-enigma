@@ -1,0 +1,37 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`EmailAuthentication should show the EmailAuthentication page 1`] = `
+<sessionframe-stub
+  hideback="true"
+  icon=""
+>
+  <h2
+    class="session-title"
+  >
+    
+    Magic link success!
+  
+  </h2>
+   
+  <div
+    class="session-main"
+  >
+    <p
+      class="session-subtitle"
+    >
+      
+      You're now signed in to Lunie with your email address. Head over to the
+      notifications page to see some of your recent events.
+    
+    </p>
+     
+    <tmbtn-stub
+      centered="true"
+      customclass=""
+      value="Let's Go!"
+    />
+  </div>
+   
+  <!---->
+</sessionframe-stub>
+`;
