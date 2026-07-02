@@ -47,6 +47,7 @@ class Source(Base):
     project = relationship("Project", back_populates="sources")
     jobs = relationship("Job", back_populates="source")
     transcripts = relationship("Transcript", back_populates="source", cascade="all, delete-orphan")
+    candidates = relationship("CandidateClip", back_populates="source", cascade="all, delete-orphan")
 
 
 class Job(Base):
@@ -118,6 +119,7 @@ class CandidateClip(Base):
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
     project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), nullable=False)
+    source_id: Mapped[str | None] = mapped_column(ForeignKey("sources.id"), nullable=True)
     start_seconds: Mapped[float] = mapped_column(Float, nullable=False)
     end_seconds: Mapped[float] = mapped_column(Float, nullable=False)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -130,6 +132,7 @@ class CandidateClip(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     project = relationship("Project", back_populates="candidates")
+    source = relationship("Source", back_populates="candidates")
     edit_timelines = relationship("EditTimeline", back_populates="candidate", cascade="all, delete-orphan")
 
 
