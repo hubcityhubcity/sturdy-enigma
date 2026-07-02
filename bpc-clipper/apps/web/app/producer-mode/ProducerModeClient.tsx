@@ -1,7 +1,15 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Candidate, generateCandidates, listCandidates } from '../../lib/api';
+import {
+  Candidate,
+  ExportRecord,
+  createEditTimeline,
+  createExport,
+  generateCandidates,
+  listCandidates,
+  renderExport,
+} from '../../lib/api';
 
 const fallbackCandidates: Candidate[] = [
   {
@@ -30,6 +38,12 @@ const fallbackCandidates: Candidate[] = [
   },
 ];
 
+type CandidateWorkflowState = {
+  status: string;
+  exportRecord?: ExportRecord;
+  error?: string;
+};
+
 function formatTime(seconds: number) {
   const minutes = Math.floor(seconds / 60).toString().padStart(2, '0');
   const remainingSeconds = Math.floor(seconds % 60).toString().padStart(2, '0');
@@ -44,6 +58,7 @@ export function ProducerModeClient({ projectId }: { projectId?: string }) {
   const [candidates, setCandidates] = useState<Candidate[]>(fallbackCandidates);
   const [status, setStatus] = useState(projectId ? 'Loading project candidates...' : 'Showing demo candidates.');
   const [error, setError] = useState('');
+  const [workflowByCandidate, setWorkflowByCandidate] = useState<Record<string, CandidateWorkflowState>>({});
 
   const sortedCandidates = useMemo(
     () => [...candidates].sort((a, b) => b.score - a.score),
@@ -74,6 +89,61 @@ export function ProducerModeClient({ projectId }: { projectId?: string }) {
     loadCandidates();
   }, [projectId]);
 
+  async function approveAndRender(candidate: Candidate) {
+    if (!projectId || candidate.project_id === 'demo') {
+      setWorkflowByCandidate((current) => ({
+        ...current,
+        [candidate.candidate_id]: { status: 'Create a real project first to approve and render.' },
+      }));
+      return;
+    }
+
+    setWorkflowByCandidate((current) => ({
+      ...current,
+      [candidate.candidate_id]: { status: 'Approving candidate...' },
+    }));
+
+    try {
+      const edit = await createEditTimeline(candidate.candidate_id, {
+        hook_text: candidate.excerpt,
+        caption_preset: candidate.category === 'debate_heat' ? 'bpc_debate_heat' : 'bpc_clean_editorial',
+        crop_mode: 'speaker_focus',
+      });
+
+      setWorkflowByCandidate((current) => ({
+        ...current,
+        [candidate.candidate_id]: { status: 'Creating vertical export...' },
+      }));
+
+      const queuedExport = await createExport(edit.edit_id, {
+        format: 'vertical_1080x1920',
+        include_burned_captions: true,
+        include_srt: true,
+        include_vtt: true,
+        include_metadata: true,
+      });
+
+      setWorkflowByCandidate((current) => ({
+        ...current,
+        [candidate.candidate_id]: { status: 'Rendering vertical clip...', exportRecord: queuedExport },
+      }));
+
+      const renderedExport = await renderExport(queuedExport.export_id);
+      setWorkflowByCandidate((current) => ({
+        ...current,
+        [candidate.candidate_id]: { status: `Render finished: ${renderedExport.status}`, exportRecord: renderedExport },
+      }));
+    } catch (caught) {
+      setWorkflowByCandidate((current) => ({
+        ...current,
+        [candidate.candidate_id]: {
+          status: 'Workflow failed.',
+          error: caught instanceof Error ? caught.message : 'Unable to approve and render candidate.',
+        },
+      }));
+    }
+  }
+
   return (
     <>
       <section className="card" style={{ marginTop: 24 }}>
@@ -84,29 +154,50 @@ export function ProducerModeClient({ projectId }: { projectId?: string }) {
       </section>
 
       <section style={{ display: 'grid', gap: 18, marginTop: 24 }}>
-        {sortedCandidates.map((candidate) => (
-          <article className="card candidate" key={candidate.candidate_id}>
-            <div>
-              <div className="score">{candidate.score}</div>
-              <div className="badge">{formatCategory(candidate.category)}</div>
-            </div>
-            <div>
-              <h2>{candidate.title}</h2>
-              <p>
-                <strong>Source time:</strong> {formatTime(candidate.start_seconds)} - {formatTime(candidate.end_seconds)}
-              </p>
-              <p>{candidate.excerpt}</p>
-              <p><strong>Why it ranked:</strong> {candidate.explanation}</p>
-              {candidate.risk_flags.length > 0 && (
-                <p><strong>Risk flags:</strong> {candidate.risk_flags.join(', ')}</p>
-              )}
-            </div>
-            <div className="button-row">
-              <a className="button" href="#">Approve</a>
-              <a className="button secondary" href="#">Edit</a>
-            </div>
-          </article>
-        ))}
+        {sortedCandidates.map((candidate) => {
+          const workflow = workflowByCandidate[candidate.candidate_id];
+          return (
+            <article className="card candidate" key={candidate.candidate_id}>
+              <div>
+                <div className="score">{candidate.score}</div>
+                <div className="badge">{formatCategory(candidate.category)}</div>
+              </div>
+              <div>
+                <h2>{candidate.title}</h2>
+                <p>
+                  <strong>Source time:</strong> {formatTime(candidate.start_seconds)} - {formatTime(candidate.end_seconds)}
+                </p>
+                <p>{candidate.excerpt}</p>
+                <p><strong>Why it ranked:</strong> {candidate.explanation}</p>
+                {candidate.risk_flags.length > 0 && (
+                  <p><strong>Risk flags:</strong> {candidate.risk_flags.join(', ')}</p>
+                )}
+                {workflow && (
+                  <div className="card" style={{ marginTop: 12 }}>
+                    <p><strong>Workflow:</strong> {workflow.status}</p>
+                    {workflow.exportRecord && (
+                      <>
+                        <p><strong>Export ID:</strong> {workflow.exportRecord.export_id}</p>
+                        <p><strong>Video path:</strong> {workflow.exportRecord.video_path || 'Not ready yet'}</p>
+                        <p><strong>SRT:</strong> {workflow.exportRecord.srt_path || 'Not generated'}</p>
+                        <p><strong>VTT:</strong> {workflow.exportRecord.vtt_path || 'Not generated'}</p>
+                      </>
+                    )}
+                    {workflow.error && <p style={{ color: '#ff8a8a' }}><strong>Error:</strong> {workflow.error}</p>}
+                  </div>
+                )}
+              </div>
+              <div className="button-row">
+                <button className="button" type="button" onClick={() => approveAndRender(candidate)}>
+                  Approve + Render
+                </button>
+                <button className="button secondary" type="button" onClick={() => approveAndRender(candidate)}>
+                  Quick Export
+                </button>
+              </div>
+            </article>
+          );
+        })}
       </section>
     </>
   );
