@@ -19,6 +19,7 @@ class Project(Base):
     jobs = relationship("Job", back_populates="project", cascade="all, delete-orphan")
     transcripts = relationship("Transcript", back_populates="project", cascade="all, delete-orphan")
     candidates = relationship("CandidateClip", back_populates="project", cascade="all, delete-orphan")
+    edit_timelines = relationship("EditTimeline", back_populates="project", cascade="all, delete-orphan")
 
 
 class Source(Base):
@@ -124,6 +125,28 @@ class CandidateClip(Base):
     category: Mapped[str] = mapped_column(String(80), nullable=False)
     explanation: Mapped[str] = mapped_column(Text, nullable=False)
     risk_flags: Mapped[list] = mapped_column(JSON, default=list)
+    status: Mapped[str] = mapped_column(String(50), default="candidate")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     project = relationship("Project", back_populates="candidates")
+    edit_timelines = relationship("EditTimeline", back_populates="candidate", cascade="all, delete-orphan")
+
+
+class EditTimeline(Base):
+    __tablename__ = "edit_timelines"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), nullable=False)
+    candidate_clip_id: Mapped[str] = mapped_column(ForeignKey("candidate_clips.id"), nullable=False)
+    start_seconds: Mapped[float] = mapped_column(Float, nullable=False)
+    end_seconds: Mapped[float] = mapped_column(Float, nullable=False)
+    hook_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    caption_preset: Mapped[str] = mapped_column(String(120), default="bpc_clean_editorial")
+    crop_mode: Mapped[str] = mapped_column(String(80), default="speaker_focus")
+    status: Mapped[str] = mapped_column(String(50), default="draft")
+    settings: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    project = relationship("Project", back_populates="edit_timelines")
+    candidate = relationship("CandidateClip", back_populates="edit_timelines")
