@@ -1,4 +1,5 @@
 export const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000/api/v1';
+export const API_ORIGIN = API_BASE_URL.replace(/\/api\/v1\/?$/, '');
 
 export type Project = {
   project_id: string;
@@ -68,8 +69,20 @@ export type ExportRecord = {
   srt_path?: string | null;
   vtt_path?: string | null;
   metadata_path?: string | null;
+  download_urls?: {
+    video?: string | null;
+    srt?: string | null;
+    vtt?: string | null;
+    metadata?: string | null;
+  };
   error?: string | null;
 };
+
+export function absoluteApiUrl(path?: string | null): string | null {
+  if (!path) return null;
+  if (path.startsWith('http://') || path.startsWith('https://')) return path;
+  return `${API_ORIGIN}${path}`;
+}
 
 export async function createProject(input: {
   name: string;
