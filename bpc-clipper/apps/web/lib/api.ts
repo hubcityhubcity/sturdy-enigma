@@ -28,6 +28,22 @@ export type Source = {
   rights_confirmed: boolean;
 };
 
+export type ScoreSignal = {
+  name: string;
+  score: number;
+  explanation: string;
+};
+
+export type ScoreBreakdown = {
+  hook?: ScoreSignal;
+  curiosity?: ScoreSignal;
+  emotion?: ScoreSignal;
+  debate?: ScoreSignal;
+  story?: ScoreSignal;
+  retention?: ScoreSignal;
+  overall?: ScoreSignal;
+};
+
 export type Candidate = {
   candidate_id: string;
   project_id: string;
@@ -39,6 +55,7 @@ export type Candidate = {
   score: number;
   category: string;
   explanation: string;
+  score_breakdown?: ScoreBreakdown;
   risk_flags: string[];
   status?: string;
 };
