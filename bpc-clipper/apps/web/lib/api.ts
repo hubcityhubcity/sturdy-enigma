@@ -31,6 +31,7 @@ export type Source = {
 export type Candidate = {
   candidate_id: string;
   project_id: string;
+  source_id?: string | null;
   start_seconds: number;
   end_seconds: number;
   title: string;
@@ -75,6 +76,17 @@ export type ExportRecord = {
     vtt?: string | null;
     metadata?: string | null;
   };
+  error?: string | null;
+};
+
+export type RenderJob = {
+  job_id: string;
+  export_id?: string | null;
+  project_id: string;
+  stage: string;
+  progress: number;
+  message: string;
+  status: string;
   error?: string | null;
 };
 
@@ -196,5 +208,32 @@ export async function renderExport(exportId: string): Promise<ExportRecord> {
   });
 
   if (!response.ok) throw new Error('Failed to render export');
+  return response.json();
+}
+
+export async function queueRenderExport(exportId: string): Promise<RenderJob> {
+  const response = await fetch(`${API_BASE_URL}/exports/${exportId}/queue-render`, {
+    method: 'POST',
+  });
+
+  if (!response.ok) throw new Error('Failed to queue render job');
+  return response.json();
+}
+
+export async function getRenderJob(jobId: string): Promise<RenderJob> {
+  const response = await fetch(`${API_BASE_URL}/render-jobs/${jobId}`, {
+    cache: 'no-store',
+  });
+
+  if (!response.ok) throw new Error('Failed to get render job');
+  return response.json();
+}
+
+export async function getExport(exportId: string): Promise<ExportRecord> {
+  const response = await fetch(`${API_BASE_URL}/exports/${exportId}`, {
+    cache: 'no-store',
+  });
+
+  if (!response.ok) throw new Error('Failed to get export');
   return response.json();
 }
