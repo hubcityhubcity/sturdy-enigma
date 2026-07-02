@@ -6,6 +6,7 @@ from typing import Literal
 from uuid import uuid4
 
 from database import create_db_and_tables, get_db
+from link_importer import import_direct_media_url
 from local_storage import save_uploaded_file
 from media_probe import probe_media
 from models import CandidateClip, Job, Project, Source
@@ -17,7 +18,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="BPC Clipper API", version="0.4.0", lifespan=lifespan)
+app = FastAPI(title="BPC Clipper API", version="0.5.0", lifespan=lifespan)
 
 
 class ProjectCreate(BaseModel):
@@ -90,6 +91,19 @@ def serialize_candidate(candidate: CandidateClip) -> dict:
         "explanation": candidate.explanation,
         "risk_flags": candidate.risk_flags or [],
     }
+
+
+def make_job_for_source(project_id: str, source: Source, message: str, status: str = "queued") -> Job:
+    return Job(
+        id=str(uuid4()),
+        project_id=project_id,
+        source_id=source.id,
+        stage="queued" if status == "queued" else "importing_source",
+        progress=0 if status == "queued" else 30,
+        message=message,
+        status=status,
+        source_url=source.original_url,
+    )
 
 
 @app.get("/api/v1/health")
@@ -199,28 +213,35 @@ def create_link_source(project_id: str, payload: LinkSourceCreate, db: Session =
     if project is None:
         raise HTTPException(status_code=404, detail="project_not_found")
 
+    downloaded_path, import_status, import_message = import_direct_media_url(project_id, str(payload.url))
+    probe = probe_media(str(downloaded_path)) if downloaded_path else None
+
     source = Source(
         id=str(uuid4()),
         project_id=project_id,
         source_type="link",
         original_url=str(payload.url),
         title=payload.title,
-        validation_status="pending_import",
-        validation_message="Link source recorded. Media import has not run yet.",
+        storage_path=str(downloaded_path) if downloaded_path else None,
+        duration_seconds=probe.duration_seconds if probe else None,
+        width=probe.width if probe else None,
+        height=probe.height if probe else None,
+        fps=probe.fps if probe else None,
+        video_codec=probe.video_codec if probe else None,
+        audio_codec=probe.audio_codec if probe else None,
+        validation_status=probe.validation_status if probe else import_status,
+        validation_message=probe.validation_message if probe else import_message,
         rights_confirmed=payload.rights_confirmed,
     )
     db.add(source)
     db.flush()
 
-    job = Job(
-        id=str(uuid4()),
+    source_is_ready = source.validation_status == "valid"
+    job = make_job_for_source(
         project_id=project_id,
-        source_id=source.id,
-        stage="queued",
-        progress=0,
-        message="Link source queued for import",
-        status="queued",
-        source_url=str(payload.url),
+        source=source,
+        message="Direct link imported and queued for processing" if source_is_ready else source.validation_message,
+        status="queued" if source_is_ready else "needs_attention",
     )
     project.source_type = "link"
     db.add(job)
