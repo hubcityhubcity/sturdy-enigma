@@ -168,6 +168,15 @@ export async function generateCandidates(projectId: string): Promise<{ project_i
   return response.json();
 }
 
+export async function rescoreCandidates(projectId: string): Promise<{ project_id: string; updated_count: number; candidates: Candidate[] }> {
+  const response = await fetch(`${API_BASE_URL}/projects/${projectId}/candidates/rescore`, {
+    method: 'POST',
+  });
+
+  if (!response.ok) throw new Error('Failed to rescore candidates');
+  return response.json();
+}
+
 export async function listCandidates(projectId: string): Promise<{ project_id: string; candidates: Candidate[] }> {
   const response = await fetch(`${API_BASE_URL}/projects/${projectId}/candidates`, {
     cache: 'no-store',
