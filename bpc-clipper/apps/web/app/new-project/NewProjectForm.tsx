@@ -1,21 +1,24 @@
 'use client';
 
 import { FormEvent, useState } from 'react';
-import { createLinkSource, createProject, generateCandidates } from '../../lib/api';
+import { createLinkSource, createProject, createUploadSource, generateCandidates, Source } from '../../lib/api';
 
 export function NewProjectForm() {
   const [name, setName] = useState('');
   const [sourceType, setSourceType] = useState<'link' | 'upload'>('link');
   const [url, setUrl] = useState('');
+  const [file, setFile] = useState<File | null>(null);
   const [rightsConfirmed, setRightsConfirmed] = useState(false);
   const [status, setStatus] = useState('');
   const [projectId, setProjectId] = useState<string | null>(null);
   const [jobId, setJobId] = useState<string | null>(null);
+  const [source, setSource] = useState<Source | null>(null);
   const [error, setError] = useState('');
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError('');
+    setSource(null);
     setStatus('Creating project...');
 
     try {
@@ -39,6 +42,18 @@ export function NewProjectForm() {
           rights_confirmed: rightsConfirmed,
         });
         setJobId(sourceJob.job_id);
+        setSource(sourceJob.source);
+      }
+
+      if (sourceType === 'upload') {
+        if (!file) throw new Error('Choose a media file first.');
+        setStatus('Uploading and validating media...');
+        const sourceJob = await createUploadSource(project.project_id, {
+          file,
+          rights_confirmed: rightsConfirmed,
+        });
+        setJobId(sourceJob.job_id);
+        setSource(sourceJob.source);
       }
 
       setStatus('Generating mock candidate clips...');
@@ -89,8 +104,12 @@ export function NewProjectForm() {
         ) : (
           <label>
             Upload file
-            <input className="input" type="file" disabled />
-            <p>Upload wiring comes next. Link workflow is connected first.</p>
+            <input
+              className="input"
+              type="file"
+              accept="video/*,audio/*"
+              onChange={(event) => setFile(event.target.files?.[0] || null)}
+            />
           </label>
         )}
 
@@ -116,6 +135,18 @@ export function NewProjectForm() {
       {status && <p><strong>Status:</strong> {status}</p>}
       {projectId && <p><strong>Project ID:</strong> {projectId}</p>}
       {jobId && <p><strong>Job ID:</strong> {jobId}</p>}
+      {source && (
+        <div className="card" style={{ marginTop: 16 }}>
+          <h2>Source validation</h2>
+          <p><strong>Type:</strong> {source.source_type}</p>
+          <p><strong>Status:</strong> {source.validation_status}</p>
+          {source.validation_message && <p><strong>Message:</strong> {source.validation_message}</p>}
+          {source.duration_seconds && <p><strong>Duration:</strong> {Math.round(source.duration_seconds)} seconds</p>}
+          {source.width && source.height && <p><strong>Size:</strong> {source.width} × {source.height}</p>}
+          {source.video_codec && <p><strong>Video codec:</strong> {source.video_codec}</p>}
+          {source.audio_codec && <p><strong>Audio codec:</strong> {source.audio_codec}</p>}
+        </div>
+      )}
       {error && <p style={{ color: '#ff8a8a' }}><strong>Error:</strong> {error}</p>}
     </section>
   );
