@@ -8,6 +8,25 @@ export type Project = {
   status: string;
 };
 
+export type Source = {
+  source_id: string;
+  project_id: string;
+  source_type: 'upload' | 'link';
+  original_filename?: string | null;
+  original_url?: string | null;
+  title?: string | null;
+  storage_path?: string | null;
+  duration_seconds?: number | null;
+  width?: number | null;
+  height?: number | null;
+  fps?: number | null;
+  video_codec?: string | null;
+  audio_codec?: string | null;
+  validation_status: string;
+  validation_message?: string | null;
+  rights_confirmed: boolean;
+};
+
 export type Candidate = {
   candidate_id: string;
   project_id: string;
@@ -39,7 +58,7 @@ export async function createProject(input: {
 export async function createLinkSource(projectId: string, input: {
   url: string;
   rights_confirmed: boolean;
-}): Promise<{ project_id: string; job_id: string; status: string }> {
+}): Promise<{ project_id: string; source: Source; job_id: string; status: string }> {
   const response = await fetch(`${API_BASE_URL}/projects/${projectId}/sources/link`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -47,6 +66,23 @@ export async function createLinkSource(projectId: string, input: {
   });
 
   if (!response.ok) throw new Error('Failed to create link source');
+  return response.json();
+}
+
+export async function createUploadSource(projectId: string, input: {
+  file: File;
+  rights_confirmed: boolean;
+}): Promise<{ project_id: string; source: Source; job_id: string; status: string }> {
+  const body = new FormData();
+  body.append('file', input.file);
+  body.append('rights_confirmed', String(input.rights_confirmed));
+
+  const response = await fetch(`${API_BASE_URL}/projects/${projectId}/sources/upload`, {
+    method: 'POST',
+    body,
+  });
+
+  if (!response.ok) throw new Error('Failed to upload source');
   return response.json();
 }
 
