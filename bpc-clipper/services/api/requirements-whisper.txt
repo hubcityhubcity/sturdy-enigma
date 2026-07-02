@@ -1,0 +1,5 @@
+# Optional transcription dependencies.
+# Install only when enabling the Whisper transcription provider.
+
+-r requirements.txt
+openai-whisper==20250625
