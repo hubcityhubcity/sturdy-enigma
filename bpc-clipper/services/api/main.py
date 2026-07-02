@@ -11,6 +11,7 @@ from local_storage import save_uploaded_file
 from media_probe import probe_media
 from mock_transcript import get_mock_segments, word_timings_for_segment
 from models import CandidateClip, EditTimeline, ExportRecord, Job, Project, Source, Transcript, TranscriptSegment, TranscriptWord
+from render_scaffold import create_placeholder_export_files
 
 
 @asynccontextmanager
@@ -19,7 +20,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="BPC Clipper API", version="0.8.0", lifespan=lifespan)
+app = FastAPI(title="BPC Clipper API", version="0.9.0", lifespan=lifespan)
 
 
 class ProjectCreate(BaseModel):
@@ -279,8 +280,20 @@ def create_export(edit_id: str, payload: ExportCreate, db: Session = Depends(get
     edit = db.get(EditTimeline, edit_id)
     if edit is None: raise HTTPException(status_code=404, detail="edit_not_found")
     export = ExportRecord(id=str(uuid4()), project_id=edit.project_id, edit_timeline_id=edit.id, status="queued", format=payload.format, include_burned_captions=payload.include_burned_captions, include_srt=payload.include_srt, include_vtt=payload.include_vtt, include_metadata=payload.include_metadata)
-    edit.status = "queued_for_export"
-    db.add(export); db.commit(); db.refresh(export)
+    db.add(export); db.flush()
+    try:
+        paths = create_placeholder_export_files(export, edit)
+        export.video_path = paths["video_path"]
+        export.srt_path = paths["srt_path"]
+        export.vtt_path = paths["vtt_path"]
+        export.metadata_path = paths["metadata_path"]
+        export.status = "placeholder_complete"
+        edit.status = "export_placeholder_complete"
+    except Exception as error:
+        export.status = "failed"
+        export.error_message = str(error)
+        edit.status = "export_failed"
+    db.commit(); db.refresh(export)
     return serialize_export(export)
 
 
