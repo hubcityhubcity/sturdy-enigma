@@ -1,25 +1,31 @@
 # BPC Clipper
 
-Black Podcast Clips AI Clipper is a local-first application for turning long-form podcast content into ranked short-form clip candidates.
+Black Podcast Clips AI Clipper is a local-first application for turning long-form podcast content into ranked short-form clip candidates and vertical exports.
 
 ## Current milestone
-Connected foundation scaffold.
 
-The web app can now:
+Producer workflow scaffold.
+
+The app can now:
 - Create a project through the FastAPI backend.
-- Queue a pasted link source.
-- Generate mock candidate clips.
-- Open Producer Mode for that project.
-- Fall back to demo candidates if the API is not running.
+- Upload a media file or import a direct media link.
+- Validate media with FFprobe when available.
+- Generate mock transcript data with word timings.
+- Generate ranked candidate clips from transcript segments.
+- Approve a candidate into an editable timeline.
+- Create an export record.
+- Render a basic trimmed MP4 with FFmpeg when source media is available.
+- Render 1080x1920 vertical exports for Shorts/TikTok/Reels formats.
+- Burn segmented captions into the MP4 when requested.
+- Serve MP4, SRT, VTT, and metadata files through API download routes.
 
 ## Stack
 
 - Web app: Next.js
 - API: FastAPI
-- Worker: Python
-- Database: PostgreSQL
-- Queue: Redis
-- Media tools: FFmpeg
+- Worker: Python scaffold
+- Database: SQLite by default, PostgreSQL-ready through `DATABASE_URL`
+- Media tools: FFmpeg / FFprobe
 
 ## Main workflow
 
@@ -30,7 +36,11 @@ The web app can now:
 5. Generate or load transcript.
 6. Generate candidate clips.
 7. Review in Producer Mode.
-8. Apply preset and export.
+8. Approve candidate.
+9. Create edit timeline.
+10. Create export.
+11. Render vertical clip.
+12. Open or download MP4/SRT/VTT/metadata.
 
 ## Folder layout
 
@@ -41,6 +51,22 @@ services/worker
 packages/shared
 packages/presets
 infra
+scripts
+```
+
+## Prerequisites
+
+Install:
+
+- Python 3.11+
+- Node.js 18+
+- FFmpeg and FFprobe
+
+Check FFmpeg:
+
+```bash
+ffmpeg -version
+ffprobe -version
 ```
 
 ## Run the API locally
@@ -52,6 +78,12 @@ python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 uvicorn main:app --reload --port 8000
+```
+
+On Windows PowerShell, activate with:
+
+```powershell
+.venv\Scripts\Activate.ps1
 ```
 
 Health check:
@@ -75,27 +107,71 @@ Then open:
 http://localhost:3000
 ```
 
-## Connected demo flow
+## Connected UI flow
 
 1. Start the API.
 2. Start the web app.
 3. Open `/new-project`.
 4. Enter a project name.
-5. Choose `Paste a link`.
-6. Add a direct media URL.
-7. Confirm permission.
-8. Submit.
-9. Open Producer Mode from the result.
+5. Choose upload or paste a direct media link.
+6. Confirm permission.
+7. Submit.
+8. Open Producer Mode from the result.
+9. Click `Approve + Render` on a candidate.
+10. Open the generated MP4/SRT/VTT/metadata links.
+
+## End-to-end pipeline check
+
+Start the API first, then from `bpc-clipper` run:
+
+```bash
+node scripts/check-pipeline.mjs
+```
+
+Optionally provide your own direct media URL:
+
+```bash
+DIRECT_MEDIA_URL="https://example.com/video.mp4" node scripts/check-pipeline.mjs
+```
+
+Or point the script at a different API host:
+
+```bash
+API_BASE_URL="http://localhost:8000/api/v1" node scripts/check-pipeline.mjs
+```
+
+The script will:
+
+1. Create a project.
+2. Import a direct media URL.
+3. Generate a mock transcript.
+4. Generate candidates.
+5. Approve the top candidate.
+6. Create a vertical export.
+7. Render the export.
+8. Print MP4, SRT, VTT, and metadata download URLs.
+
+## Export download routes
+
+For any completed export:
+
+```text
+GET /api/v1/exports/{export_id}/files/video
+GET /api/v1/exports/{export_id}/files/srt
+GET /api/v1/exports/{export_id}/files/vtt
+GET /api/v1/exports/{export_id}/files/metadata
+```
 
 ## First MVP target
-A user can create a project, add a source, see job status, view mock ranked candidates, and understand the path toward rendering real clips.
+
+A user can create a project, add a source, generate candidates, approve one, render a vertical clip with captions, and open the generated output files from Producer Mode.
 
 ## Next engineering targets
-- Add real file upload endpoint.
-- Persist projects and candidates in PostgreSQL.
-- Replace in-memory mock data.
-- Add FFprobe media validation.
-- Add direct URL media import.
-- Add transcript adapter.
-- Add real candidate segmentation.
-- Add export/render endpoint.
+
+- Add source-linked candidates instead of choosing newest project source.
+- Replace mock transcription with a real transcription adapter.
+- Add proper migration management.
+- Add render queue/background worker.
+- Add better caption timing from transcript words.
+- Add smart crop/face tracking.
+- Add render progress polling.
