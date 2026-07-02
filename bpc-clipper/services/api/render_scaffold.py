@@ -48,10 +48,21 @@ def is_vertical_format(export_format: str) -> bool:
     return export_format in {"vertical_1080x1920", "tiktok", "youtube_shorts", "instagram_reels"}
 
 
-def video_filter_for_format(export_format: str) -> str | None:
-    if is_vertical_format(export_format):
-        return "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1"
-    return None
+def ffmpeg_subtitle_path(path: Path) -> str:
+    return str(path).replace("\\", "/").replace(":", "\\:")
+
+
+def build_video_filter(export: ExportRecord, srt_path: Path | None) -> str | None:
+    filters: list[str] = []
+    if is_vertical_format(export.format):
+        filters.extend([
+            "scale=1080:1920:force_original_aspect_ratio=increase",
+            "crop=1080:1920",
+            "setsar=1",
+        ])
+    if export.include_burned_captions and srt_path is not None:
+        filters.append(f"subtitles={ffmpeg_subtitle_path(srt_path)}")
+    return ",".join(filters) if filters else None
 
 
 def write_sidecar_files(export: ExportRecord, edit: EditTimeline, video_path: Path, render_status: str) -> dict:
@@ -74,17 +85,18 @@ def write_sidecar_files(export: ExportRecord, edit: EditTimeline, video_path: Pa
         "status": render_status,
         "video_path": str(video_path),
         "target_aspect_ratio": "9:16" if is_vertical_format(export.format) else "source",
+        "burned_captions": export.include_burned_captions,
     }
 
     metadata_path.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
-    if export.include_srt:
+    if export.include_srt or export.include_burned_captions:
         srt_path.write_text(build_srt(edit), encoding="utf-8")
     if export.include_vtt:
         vtt_path.write_text(build_vtt(edit), encoding="utf-8")
 
     return {
         "metadata_path": str(metadata_path),
-        "srt_path": str(srt_path) if export.include_srt else None,
+        "srt_path": str(srt_path) if (export.include_srt or export.include_burned_captions) else None,
         "vtt_path": str(vtt_path) if export.include_vtt else None,
         "video_path": str(video_path),
     }
@@ -106,6 +118,7 @@ def render_trimmed_mp4(export: ExportRecord, edit: EditTimeline, source: Source 
     Current supported outputs:
     - source aspect ratio trim
     - 1080x1920 vertical crop for Shorts/TikTok/Reels formats
+    - optional burned captions from generated SRT
     """
     if source is None or not source.storage_path:
         return create_placeholder_export_files(export, edit)
@@ -117,7 +130,10 @@ def render_trimmed_mp4(export: ExportRecord, edit: EditTimeline, source: Source 
     folder = export_dir(export.project_id, export.id)
     output_path = folder / "clip.mp4"
     duration = max(1.0, edit.end_seconds - edit.start_seconds)
-    vf = video_filter_for_format(export.format)
+    srt_path = folder / "captions.srt"
+    if export.include_burned_captions:
+        srt_path.write_text(build_srt(edit), encoding="utf-8")
+    vf = build_video_filter(export, srt_path if export.include_burned_captions else None)
 
     command = [
         "ffmpeg",
@@ -149,5 +165,10 @@ def render_trimmed_mp4(export: ExportRecord, edit: EditTimeline, source: Source 
         error_path.write_text(error.stderr or "FFmpeg render failed.", encoding="utf-8")
         return create_placeholder_export_files(export, edit)
 
-    status = "ffmpeg_vertical_9x16_complete" if vf else "ffmpeg_trim_complete"
+    if export.include_burned_captions:
+        status = "ffmpeg_burned_captions_complete"
+    elif is_vertical_format(export.format):
+        status = "ffmpeg_vertical_9x16_complete"
+    else:
+        status = "ffmpeg_trim_complete"
     return write_sidecar_files(export, edit, output_path, status)
