@@ -119,12 +119,12 @@ function ScoreBreakdownPanel({ breakdown }: { breakdown?: ScoreBreakdown }) {
     .filter(Boolean) as ScoreSignal[];
 
   if (!signals.length) {
-    return <p><strong>BPC Brain:</strong> Score breakdown not available yet. Rescore this project after running migrations.</p>;
+    return <p><strong>Titan Brain:</strong> Score breakdown not available yet. Rescore this project after running migrations.</p>;
   }
 
   return (
     <div className="card" style={{ marginTop: 12 }}>
-      <h3>BPC Brain</h3>
+      <h3>Titan Brain</h3>
       {breakdown?.overall && (
         <p><strong>Overall:</strong> {breakdown.overall.score} — {breakdown.overall.explanation}</p>
       )}
@@ -200,12 +200,12 @@ export function ProducerModeClient({ projectId }: { projectId?: string }) {
 
     setIsRescoring(true);
     setError('');
-    setStatus('Rescoring candidates with BPC Brain...');
+    setStatus('Rescoring candidates with Titan Brain...');
 
     try {
       const result = await rescoreCandidates(projectId);
       setCandidates(result.candidates);
-      setStatus(`BPC Brain rescored ${result.updated_count} candidate(s).`);
+      setStatus(`Titan Brain rescored ${result.updated_count} candidate(s).`);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Unable to rescore candidates.');
       setStatus('Candidate rescore failed.');
@@ -332,7 +332,7 @@ export function ProducerModeClient({ projectId }: { projectId?: string }) {
         {error && <p style={{ color: '#ff8a8a' }}><strong>API note:</strong> {error}</p>}
         <div className="button-row" style={{ marginTop: 12 }}>
           <button className="button secondary" type="button" onClick={rescoreProject} disabled={isRescoring || !projectId}>
-            {isRescoring ? 'Rescoring...' : 'Rescore with BPC Brain'}
+            {isRescoring ? 'Rescoring...' : 'Rescore with Titan Brain'}
           </button>
         </div>
       </section>
