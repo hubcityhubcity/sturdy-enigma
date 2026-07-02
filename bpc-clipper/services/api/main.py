@@ -12,6 +12,7 @@ from media_probe import probe_media
 from mock_transcript import get_mock_segments, word_timings_for_segment
 from models import CandidateClip, EditTimeline, ExportRecord, Job, Project, Source, Transcript, TranscriptSegment, TranscriptWord
 from render_scaffold import create_placeholder_export_files
+from render_service import render_export_with_best_source
 
 
 @asynccontextmanager
@@ -20,7 +21,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="BPC Clipper API", version="0.9.0", lifespan=lifespan)
+app = FastAPI(title="BPC Clipper API", version="0.10.0", lifespan=lifespan)
 
 
 class ProjectCreate(BaseModel):
@@ -283,16 +284,28 @@ def create_export(edit_id: str, payload: ExportCreate, db: Session = Depends(get
     db.add(export); db.flush()
     try:
         paths = create_placeholder_export_files(export, edit)
-        export.video_path = paths["video_path"]
-        export.srt_path = paths["srt_path"]
-        export.vtt_path = paths["vtt_path"]
-        export.metadata_path = paths["metadata_path"]
-        export.status = "placeholder_complete"
-        edit.status = "export_placeholder_complete"
+        export.video_path = paths["video_path"]; export.srt_path = paths["srt_path"]; export.vtt_path = paths["vtt_path"]; export.metadata_path = paths["metadata_path"]
+        export.status = "placeholder_complete"; edit.status = "export_placeholder_complete"
     except Exception as error:
-        export.status = "failed"
-        export.error_message = str(error)
-        edit.status = "export_failed"
+        export.status = "failed"; export.error_message = str(error); edit.status = "export_failed"
+    db.commit(); db.refresh(export)
+    return serialize_export(export)
+
+
+@app.post("/api/v1/exports/{export_id}/render")
+def render_export(export_id: str, db: Session = Depends(get_db)):
+    export = db.get(ExportRecord, export_id)
+    if export is None: raise HTTPException(status_code=404, detail="export_not_found")
+    edit = db.get(EditTimeline, export.edit_timeline_id)
+    if edit is None: raise HTTPException(status_code=404, detail="edit_not_found")
+    export.status = "rendering"; edit.status = "rendering"; db.commit()
+    try:
+        paths = render_export_with_best_source(db, export, edit)
+        export.video_path = paths["video_path"]; export.srt_path = paths["srt_path"]; export.vtt_path = paths["vtt_path"]; export.metadata_path = paths["metadata_path"]
+        export.status = "render_complete" if str(export.video_path).endswith(".mp4") else "placeholder_complete"
+        edit.status = "render_complete" if export.status == "render_complete" else "export_placeholder_complete"
+    except Exception as error:
+        export.status = "failed"; export.error_message = str(error); edit.status = "export_failed"
     db.commit(); db.refresh(export)
     return serialize_export(export)
 
