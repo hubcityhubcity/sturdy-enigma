@@ -10,7 +10,7 @@ from link_importer import import_direct_media_url
 from local_storage import save_uploaded_file
 from media_probe import probe_media
 from mock_transcript import get_mock_segments, word_timings_for_segment
-from models import CandidateClip, Job, Project, Source, Transcript, TranscriptSegment, TranscriptWord
+from models import CandidateClip, EditTimeline, Job, Project, Source, Transcript, TranscriptSegment, TranscriptWord
 
 
 @asynccontextmanager
@@ -19,7 +19,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="BPC Clipper API", version="0.6.0", lifespan=lifespan)
+app = FastAPI(title="BPC Clipper API", version="0.7.0", lifespan=lifespan)
 
 
 class ProjectCreate(BaseModel):
@@ -32,6 +32,22 @@ class LinkSourceCreate(BaseModel):
     url: HttpUrl
     rights_confirmed: bool
     title: str | None = None
+
+
+class EditTimelineCreate(BaseModel):
+    hook_text: str | None = None
+    caption_preset: str = "bpc_clean_editorial"
+    crop_mode: str = "speaker_focus"
+
+
+class EditTimelineUpdate(BaseModel):
+    start_seconds: float | None = None
+    end_seconds: float | None = None
+    hook_text: str | None = None
+    caption_preset: str | None = None
+    crop_mode: str | None = None
+    status: str | None = None
+    settings: dict | None = None
 
 
 def serialize_project(project: Project) -> dict:
@@ -55,7 +71,11 @@ def serialize_transcript(transcript: Transcript) -> dict:
 
 
 def serialize_candidate(candidate: CandidateClip) -> dict:
-    return {"candidate_id": candidate.id, "project_id": candidate.project_id, "start_seconds": candidate.start_seconds, "end_seconds": candidate.end_seconds, "title": candidate.title, "excerpt": candidate.excerpt, "score": candidate.score, "category": candidate.category, "explanation": candidate.explanation, "risk_flags": candidate.risk_flags or []}
+    return {"candidate_id": candidate.id, "project_id": candidate.project_id, "start_seconds": candidate.start_seconds, "end_seconds": candidate.end_seconds, "title": candidate.title, "excerpt": candidate.excerpt, "score": candidate.score, "category": candidate.category, "explanation": candidate.explanation, "risk_flags": candidate.risk_flags or [], "status": candidate.status}
+
+
+def serialize_edit_timeline(edit: EditTimeline) -> dict:
+    return {"edit_id": edit.id, "project_id": edit.project_id, "candidate_clip_id": edit.candidate_clip_id, "start_seconds": edit.start_seconds, "end_seconds": edit.end_seconds, "hook_text": edit.hook_text, "caption_preset": edit.caption_preset, "crop_mode": edit.crop_mode, "status": edit.status, "settings": edit.settings or {}}
 
 
 def make_job_for_source(project_id: str, source: Source, message: str, status: str = "queued") -> Job:
@@ -66,20 +86,14 @@ def create_mock_transcript_for_source(db: Session, project_id: str, source_id: s
     existing = db.query(Transcript).filter(Transcript.project_id == project_id, Transcript.source_id == source_id).first()
     if existing:
         return existing
-
     transcript = Transcript(id=str(uuid4()), project_id=project_id, source_id=source_id, language="en", provider="mock", confidence=1.0)
-    db.add(transcript)
-    db.flush()
-
+    db.add(transcript); db.flush()
     for mock_segment in get_mock_segments():
         segment = TranscriptSegment(id=str(uuid4()), transcript_id=transcript.id, speaker_label=mock_segment.speaker_label, start_seconds=mock_segment.start_seconds, end_seconds=mock_segment.end_seconds, text=mock_segment.text, confidence=mock_segment.confidence)
-        db.add(segment)
-        db.flush()
+        db.add(segment); db.flush()
         for word in word_timings_for_segment(mock_segment):
             db.add(TranscriptWord(id=str(uuid4()), segment_id=segment.id, start_seconds=word["start_seconds"], end_seconds=word["end_seconds"], text=word["text"], confidence=word["confidence"]))
-
-    db.commit()
-    db.refresh(transcript)
+    db.commit(); db.refresh(transcript)
     return transcript
 
 
@@ -88,17 +102,12 @@ def choose_primary_source(db: Session, project_id: str) -> Source | None:
 
 
 def segment_score(segment: TranscriptSegment) -> int:
-    text = segment.text.lower()
-    score = 60
-    if "let me ask" in text or "here is" in text:
-        score += 12
-    if "business" in text or "ownership" in text or "retention" in text:
-        score += 10
-    if "viral" in text or "truth" in text or "mistake" in text:
-        score += 8
+    text = segment.text.lower(); score = 60
+    if "let me ask" in text or "here is" in text: score += 12
+    if "business" in text or "ownership" in text or "retention" in text: score += 10
+    if "viral" in text or "truth" in text or "mistake" in text: score += 8
     duration = segment.end_seconds - segment.start_seconds
-    if 20 <= duration <= 55:
-        score += 8
+    if 20 <= duration <= 55: score += 8
     return min(score, 95)
 
 
@@ -117,68 +126,55 @@ def create_project(payload: ProjectCreate, db: Session = Depends(get_db)):
 @app.get("/api/v1/projects/{project_id}")
 def get_project(project_id: str, db: Session = Depends(get_db)):
     project = db.get(Project, project_id)
-    if project is None:
-        raise HTTPException(status_code=404, detail="project_not_found")
+    if project is None: raise HTTPException(status_code=404, detail="project_not_found")
     return serialize_project(project)
 
 
 @app.get("/api/v1/projects/{project_id}/sources")
 def list_sources(project_id: str, db: Session = Depends(get_db)):
     project = db.get(Project, project_id)
-    if project is None:
-        raise HTTPException(status_code=404, detail="project_not_found")
+    if project is None: raise HTTPException(status_code=404, detail="project_not_found")
     sources = db.query(Source).filter(Source.project_id == project_id).all()
     return {"project_id": project_id, "sources": [serialize_source(source) for source in sources]}
 
 
 @app.post("/api/v1/projects/{project_id}/sources/upload")
 async def create_upload_source(project_id: str, rights_confirmed: bool = Form(...), file: UploadFile = File(...), db: Session = Depends(get_db)):
-    if not rights_confirmed:
-        raise HTTPException(status_code=400, detail="rights_confirmation_required")
+    if not rights_confirmed: raise HTTPException(status_code=400, detail="rights_confirmation_required")
     project = db.get(Project, project_id)
-    if project is None:
-        raise HTTPException(status_code=404, detail="project_not_found")
-    saved_path = await save_uploaded_file(project_id, file)
-    probe = probe_media(str(saved_path))
+    if project is None: raise HTTPException(status_code=404, detail="project_not_found")
+    saved_path = await save_uploaded_file(project_id, file); probe = probe_media(str(saved_path))
     source = Source(id=str(uuid4()), project_id=project_id, source_type="upload", original_filename=file.filename, title=file.filename, storage_path=str(saved_path), duration_seconds=probe.duration_seconds, width=probe.width, height=probe.height, fps=probe.fps, video_codec=probe.video_codec, audio_codec=probe.audio_codec, validation_status=probe.validation_status, validation_message=probe.validation_message, rights_confirmed=rights_confirmed)
     db.add(source); db.flush()
     job = Job(id=str(uuid4()), project_id=project_id, source_id=source.id, stage="probing_media" if probe.validation_status != "valid" else "queued", progress=25 if probe.validation_status != "valid" else 0, message=probe.validation_message if probe.validation_status != "valid" else "Upload source queued for processing", status="needs_attention" if probe.validation_status != "valid" else "queued")
-    project.source_type = "upload"
-    db.add(job); db.commit(); db.refresh(source); db.refresh(job)
+    project.source_type = "upload"; db.add(job); db.commit(); db.refresh(source); db.refresh(job)
     return {"project_id": project_id, "source": serialize_source(source), "job_id": job.id, "status": job.status}
 
 
 @app.post("/api/v1/projects/{project_id}/sources/link")
 def create_link_source(project_id: str, payload: LinkSourceCreate, db: Session = Depends(get_db)):
-    if not payload.rights_confirmed:
-        raise HTTPException(status_code=400, detail="rights_confirmation_required")
+    if not payload.rights_confirmed: raise HTTPException(status_code=400, detail="rights_confirmation_required")
     project = db.get(Project, project_id)
-    if project is None:
-        raise HTTPException(status_code=404, detail="project_not_found")
-    downloaded_path, import_status, import_message = import_direct_media_url(project_id, str(payload.url))
-    probe = probe_media(str(downloaded_path)) if downloaded_path else None
+    if project is None: raise HTTPException(status_code=404, detail="project_not_found")
+    downloaded_path, import_status, import_message = import_direct_media_url(project_id, str(payload.url)); probe = probe_media(str(downloaded_path)) if downloaded_path else None
     source = Source(id=str(uuid4()), project_id=project_id, source_type="link", original_url=str(payload.url), title=payload.title, storage_path=str(downloaded_path) if downloaded_path else None, duration_seconds=probe.duration_seconds if probe else None, width=probe.width if probe else None, height=probe.height if probe else None, fps=probe.fps if probe else None, video_codec=probe.video_codec if probe else None, audio_codec=probe.audio_codec if probe else None, validation_status=probe.validation_status if probe else import_status, validation_message=probe.validation_message if probe else import_message, rights_confirmed=payload.rights_confirmed)
-    db.add(source); db.flush()
-    source_is_ready = source.validation_status == "valid"
+    db.add(source); db.flush(); source_is_ready = source.validation_status == "valid"
     job = make_job_for_source(project_id=project_id, source=source, message="Direct link imported and queued for processing" if source_is_ready else source.validation_message, status="queued" if source_is_ready else "needs_attention")
-    project.source_type = "link"
-    db.add(job); db.commit(); db.refresh(source); db.refresh(job)
+    project.source_type = "link"; db.add(job); db.commit(); db.refresh(source); db.refresh(job)
     return {"project_id": project_id, "source": serialize_source(source), "job_id": job.id, "status": job.status}
 
 
 @app.get("/api/v1/sources/{source_id}")
 def get_source(source_id: str, db: Session = Depends(get_db)):
     source = db.get(Source, source_id)
-    if source is None:
-        raise HTTPException(status_code=404, detail="source_not_found")
+    if source is None: raise HTTPException(status_code=404, detail="source_not_found")
     return serialize_source(source)
 
 
 @app.post("/api/v1/sources/{source_id}/transcript/mock")
 def generate_mock_transcript(source_id: str, db: Session = Depends(get_db)):
     source = db.get(Source, source_id)
-    if source is None:
-        raise HTTPException(status_code=404, detail="source_not_found")
+    if source is None: raise HTTPException(status_code=404, detail="source_not_found")
     transcript = create_mock_transcript_for_source(db, source.project_id, source.id)
     return serialize_transcript(transcript)
 
@@ -188,8 +184,7 @@ def get_project_transcript(project_id: str, db: Session = Depends(get_db)):
     transcript = db.query(Transcript).filter(Transcript.project_id == project_id).order_by(Transcript.created_at.desc()).first()
     if transcript is None:
         source = choose_primary_source(db, project_id)
-        if source is None:
-            raise HTTPException(status_code=404, detail="source_not_found")
+        if source is None: raise HTTPException(status_code=404, detail="source_not_found")
         transcript = create_mock_transcript_for_source(db, project_id, source.id)
     return serialize_transcript(transcript)
 
@@ -197,34 +192,28 @@ def get_project_transcript(project_id: str, db: Session = Depends(get_db)):
 @app.get("/api/v1/jobs/{job_id}")
 def get_job(job_id: str, db: Session = Depends(get_db)):
     job = db.get(Job, job_id)
-    if job is None:
-        raise HTTPException(status_code=404, detail="job_not_found")
+    if job is None: raise HTTPException(status_code=404, detail="job_not_found")
     return serialize_job(job)
 
 
 @app.post("/api/v1/projects/{project_id}/candidates/generate")
 def generate_candidates(project_id: str, db: Session = Depends(get_db)):
     project = db.get(Project, project_id)
-    if project is None:
-        raise HTTPException(status_code=404, detail="project_not_found")
+    if project is None: raise HTTPException(status_code=404, detail="project_not_found")
     existing = db.query(CandidateClip).filter(CandidateClip.project_id == project_id).all()
-    if existing:
-        return {"project_id": project_id, "candidates": [serialize_candidate(item) for item in existing]}
+    if existing: return {"project_id": project_id, "candidates": [serialize_candidate(item) for item in existing]}
     transcript = db.query(Transcript).filter(Transcript.project_id == project_id).order_by(Transcript.created_at.desc()).first()
     if transcript is None:
         source = choose_primary_source(db, project_id)
-        if source is None:
-            raise HTTPException(status_code=404, detail="source_not_found")
+        if source is None: raise HTTPException(status_code=404, detail="source_not_found")
         transcript = create_mock_transcript_for_source(db, project_id, source.id)
     candidates = []
     for segment in transcript.segments:
-        score = segment_score(segment)
-        category = "debate_heat" if "ask" in segment.text.lower() or "mistake" in segment.text.lower() else "story_mode"
+        score = segment_score(segment); category = "debate_heat" if "ask" in segment.text.lower() or "mistake" in segment.text.lower() else "story_mode"
         candidates.append(CandidateClip(id=str(uuid4()), project_id=project_id, start_seconds=segment.start_seconds, end_seconds=segment.end_seconds, title=segment.text[:70].rstrip() + "...", excerpt=segment.text, score=score, category=category, explanation=f"Transcript-based candidate with score {score}. Strong enough for Producer Mode review.", risk_flags=[]))
     candidates = sorted(candidates, key=lambda item: item.score, reverse=True)[:10]
     db.add_all(candidates); db.commit()
-    for candidate in candidates:
-        db.refresh(candidate)
+    for candidate in candidates: db.refresh(candidate)
     return {"project_id": project_id, "candidates": [serialize_candidate(item) for item in candidates]}
 
 
@@ -232,6 +221,46 @@ def generate_candidates(project_id: str, db: Session = Depends(get_db)):
 def list_candidates(project_id: str, db: Session = Depends(get_db)):
     candidates = db.query(CandidateClip).filter(CandidateClip.project_id == project_id).order_by(CandidateClip.score.desc()).all()
     return {"project_id": project_id, "candidates": [serialize_candidate(item) for item in candidates]}
+
+
+@app.post("/api/v1/candidates/{candidate_id}/edits")
+def create_edit_timeline(candidate_id: str, payload: EditTimelineCreate, db: Session = Depends(get_db)):
+    candidate = db.get(CandidateClip, candidate_id)
+    if candidate is None: raise HTTPException(status_code=404, detail="candidate_not_found")
+    existing = db.query(EditTimeline).filter(EditTimeline.candidate_clip_id == candidate_id).first()
+    if existing: return serialize_edit_timeline(existing)
+    edit = EditTimeline(id=str(uuid4()), project_id=candidate.project_id, candidate_clip_id=candidate.id, start_seconds=candidate.start_seconds, end_seconds=candidate.end_seconds, hook_text=payload.hook_text or candidate.title, caption_preset=payload.caption_preset, crop_mode=payload.crop_mode, status="draft", settings={"source": "candidate_approval"})
+    candidate.status = "approved"
+    db.add(edit); db.commit(); db.refresh(edit)
+    return serialize_edit_timeline(edit)
+
+
+@app.get("/api/v1/projects/{project_id}/edits")
+def list_project_edits(project_id: str, db: Session = Depends(get_db)):
+    edits = db.query(EditTimeline).filter(EditTimeline.project_id == project_id).order_by(EditTimeline.created_at.desc()).all()
+    return {"project_id": project_id, "edits": [serialize_edit_timeline(edit) for edit in edits]}
+
+
+@app.get("/api/v1/edits/{edit_id}")
+def get_edit_timeline(edit_id: str, db: Session = Depends(get_db)):
+    edit = db.get(EditTimeline, edit_id)
+    if edit is None: raise HTTPException(status_code=404, detail="edit_not_found")
+    return serialize_edit_timeline(edit)
+
+
+@app.patch("/api/v1/edits/{edit_id}")
+def update_edit_timeline(edit_id: str, payload: EditTimelineUpdate, db: Session = Depends(get_db)):
+    edit = db.get(EditTimeline, edit_id)
+    if edit is None: raise HTTPException(status_code=404, detail="edit_not_found")
+    if payload.start_seconds is not None: edit.start_seconds = payload.start_seconds
+    if payload.end_seconds is not None: edit.end_seconds = payload.end_seconds
+    if payload.hook_text is not None: edit.hook_text = payload.hook_text
+    if payload.caption_preset is not None: edit.caption_preset = payload.caption_preset
+    if payload.crop_mode is not None: edit.crop_mode = payload.crop_mode
+    if payload.status is not None: edit.status = payload.status
+    if payload.settings is not None: edit.settings = payload.settings
+    db.commit(); db.refresh(edit)
+    return serialize_edit_timeline(edit)
 
 
 @app.get("/api/v1/presets")
