@@ -20,6 +20,7 @@ class Project(Base):
     transcripts = relationship("Transcript", back_populates="project", cascade="all, delete-orphan")
     candidates = relationship("CandidateClip", back_populates="project", cascade="all, delete-orphan")
     edit_timelines = relationship("EditTimeline", back_populates="project", cascade="all, delete-orphan")
+    exports = relationship("ExportRecord", back_populates="project", cascade="all, delete-orphan")
 
 
 class Source(Base):
@@ -150,3 +151,28 @@ class EditTimeline(Base):
 
     project = relationship("Project", back_populates="edit_timelines")
     candidate = relationship("CandidateClip", back_populates="edit_timelines")
+    exports = relationship("ExportRecord", back_populates="edit_timeline", cascade="all, delete-orphan")
+
+
+class ExportRecord(Base):
+    __tablename__ = "export_records"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), nullable=False)
+    edit_timeline_id: Mapped[str] = mapped_column(ForeignKey("edit_timelines.id"), nullable=False)
+    status: Mapped[str] = mapped_column(String(50), default="queued")
+    format: Mapped[str] = mapped_column(String(80), default="vertical_1080x1920")
+    include_burned_captions: Mapped[bool] = mapped_column(Boolean, default=True)
+    include_srt: Mapped[bool] = mapped_column(Boolean, default=True)
+    include_vtt: Mapped[bool] = mapped_column(Boolean, default=True)
+    include_metadata: Mapped[bool] = mapped_column(Boolean, default=True)
+    video_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    srt_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    vtt_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    metadata_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    project = relationship("Project", back_populates="exports")
+    edit_timeline = relationship("EditTimeline", back_populates="exports")
