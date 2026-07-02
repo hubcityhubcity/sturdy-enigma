@@ -10,7 +10,7 @@ The app can now:
 - Create a project through the FastAPI backend.
 - Upload a media file or import a direct media link.
 - Validate media with FFprobe when available.
-- Generate mock transcript data with word timings.
+- Generate transcript data through a provider adapter. Mock is the default provider.
 - Generate ranked candidate clips from transcript segments.
 - Link candidate clips to the exact source media used for rendering.
 - Approve a candidate into an editable timeline.
@@ -27,6 +27,7 @@ The app can now:
 - Worker: Python scaffold
 - Database: SQLite by default, PostgreSQL-ready through `DATABASE_URL`
 - Media tools: FFmpeg / FFprobe
+- Transcription: provider adapter, mock default, Whisper scaffold optional
 
 ## Main workflow
 
@@ -92,6 +93,39 @@ Health check:
 ```bash
 curl http://localhost:8000/api/v1/health
 ```
+
+## Optional Whisper transcription setup
+
+The default transcription provider is `mock`, which keeps the pipeline fast and dependency-light during scaffold development.
+
+Optional Whisper dependencies live in:
+
+```text
+services/api/requirements-whisper.txt
+```
+
+Install them from `bpc-clipper/services/api`:
+
+```bash
+pip install -r requirements-whisper.txt
+```
+
+Environment variables:
+
+```bash
+TRANSCRIPTION_PROVIDER=mock
+WHISPER_MODEL=base
+```
+
+To prepare for Whisper later:
+
+```bash
+TRANSCRIPTION_PROVIDER=whisper
+WHISPER_MODEL=base
+uvicorn main:app --reload --port 8000
+```
+
+Important: the Whisper provider is currently a scaffold and intentionally raises until model loading is implemented. Keep `TRANSCRIPTION_PROVIDER=mock` for the working pipeline until the real provider is completed.
 
 ## Local database reset during scaffold development
 
@@ -196,8 +230,8 @@ A user can create a project, add a source, generate candidates, approve one, ren
 
 ## Next engineering targets
 
+- Implement Whisper provider model loading.
 - Add Alembic migrations.
-- Replace mock transcription with a real transcription adapter.
 - Add render queue/background worker.
 - Add better caption timing from transcript words.
 - Add smart crop/face tracking.
