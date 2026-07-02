@@ -2,8 +2,8 @@ import './globals.css';
 import type { ReactNode } from 'react';
 
 export const metadata = {
-  title: 'BPC Clipper',
-  description: 'AI producer workspace for short-form podcast clips',
+  title: 'Titan Clipper AI',
+  description: 'The AI production system for high-retention short-form content. Built first for Black Podcast Clips.',
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
