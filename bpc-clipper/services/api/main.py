@@ -16,6 +16,7 @@ from models import CandidateClip, EditTimeline, ExportRecord, Job, Project, Sour
 from render_scaffold import create_placeholder_export_files
 from render_service import render_export_with_best_source
 from transcription_adapter import get_transcription_provider
+from transcription_routes import router as transcription_router
 
 
 @asynccontextmanager
@@ -24,8 +25,9 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="BPC Clipper API", version="0.13.0", lifespan=lifespan)
+app = FastAPI(title="BPC Clipper API", version="0.14.0", lifespan=lifespan)
 app.include_router(export_download_router, prefix="/api/v1")
+app.include_router(transcription_router, prefix="/api/v1")
 
 
 class ProjectCreate(BaseModel):
