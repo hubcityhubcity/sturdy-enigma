@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 from uuid import uuid4
 from typing import Literal
+from pathlib import Path
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, HttpUrl
@@ -11,10 +12,10 @@ from export_downloads import router as export_download_router
 from link_importer import import_direct_media_url
 from local_storage import save_uploaded_file
 from media_probe import probe_media
-from mock_transcript import get_mock_segments, word_timings_for_segment
 from models import CandidateClip, EditTimeline, ExportRecord, Job, Project, Source, Transcript, TranscriptSegment, TranscriptWord
 from render_scaffold import create_placeholder_export_files
 from render_service import render_export_with_best_source
+from transcription_adapter import get_transcription_provider
 
 
 @asynccontextmanager
@@ -23,7 +24,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="BPC Clipper API", version="0.12.0", lifespan=lifespan)
+app = FastAPI(title="BPC Clipper API", version="0.13.0", lifespan=lifespan)
 app.include_router(export_download_router, prefix="/api/v1")
 
 
@@ -103,17 +104,22 @@ def choose_primary_source(db: Session, project_id: str) -> Source | None:
     return db.query(Source).filter(Source.project_id == project_id).order_by(Source.created_at.desc()).first()
 
 
-def create_mock_transcript_for_source(db: Session, project_id: str, source_id: str) -> Transcript:
-    existing = db.query(Transcript).filter(Transcript.project_id == project_id, Transcript.source_id == source_id).first()
+def create_transcript_for_source(db: Session, project_id: str, source: Source, provider_name: str | None = None) -> Transcript:
+    existing = db.query(Transcript).filter(Transcript.project_id == project_id, Transcript.source_id == source.id).first()
     if existing:
         return existing
-    transcript = Transcript(id=str(uuid4()), project_id=project_id, source_id=source_id, language="en", provider="mock", confidence=1.0)
+
+    provider = get_transcription_provider(provider_name)
+    media_path = Path(source.storage_path) if source.storage_path else Path("")
+    result = provider.transcribe(media_path)
+
+    transcript = Transcript(id=str(uuid4()), project_id=project_id, source_id=source.id, language=result.language, provider=result.provider, confidence=result.confidence)
     db.add(transcript); db.flush()
-    for mock_segment in get_mock_segments():
-        segment = TranscriptSegment(id=str(uuid4()), transcript_id=transcript.id, speaker_label=mock_segment.speaker_label, start_seconds=mock_segment.start_seconds, end_seconds=mock_segment.end_seconds, text=mock_segment.text, confidence=mock_segment.confidence)
+    for result_segment in result.segments:
+        segment = TranscriptSegment(id=str(uuid4()), transcript_id=transcript.id, speaker_label=result_segment.speaker_label, start_seconds=result_segment.start_seconds, end_seconds=result_segment.end_seconds, text=result_segment.text, confidence=result_segment.confidence)
         db.add(segment); db.flush()
-        for word in word_timings_for_segment(mock_segment):
-            db.add(TranscriptWord(id=str(uuid4()), segment_id=segment.id, start_seconds=word["start_seconds"], end_seconds=word["end_seconds"], text=word["text"], confidence=word["confidence"]))
+        for word in result_segment.words or []:
+            db.add(TranscriptWord(id=str(uuid4()), segment_id=segment.id, start_seconds=word.start_seconds, end_seconds=word.end_seconds, text=word.text, confidence=word.confidence))
     db.commit(); db.refresh(transcript)
     return transcript
 
@@ -191,7 +197,7 @@ def get_source(source_id: str, db: Session = Depends(get_db)):
 def generate_mock_transcript(source_id: str, db: Session = Depends(get_db)):
     source = db.get(Source, source_id)
     if source is None: raise HTTPException(status_code=404, detail="source_not_found")
-    return serialize_transcript(create_mock_transcript_for_source(db, source.project_id, source.id))
+    return serialize_transcript(create_transcript_for_source(db, source.project_id, source, provider_name="mock"))
 
 
 @app.get("/api/v1/projects/{project_id}/transcript")
@@ -200,7 +206,7 @@ def get_project_transcript(project_id: str, db: Session = Depends(get_db)):
     if transcript is None:
         source = choose_primary_source(db, project_id)
         if source is None: raise HTTPException(status_code=404, detail="source_not_found")
-        transcript = create_mock_transcript_for_source(db, project_id, source.id)
+        transcript = create_transcript_for_source(db, project_id, source)
     return serialize_transcript(transcript)
 
 
@@ -220,7 +226,7 @@ def generate_candidates(project_id: str, db: Session = Depends(get_db)):
     if transcript is None:
         source = choose_primary_source(db, project_id)
         if source is None: raise HTTPException(status_code=404, detail="source_not_found")
-        transcript = create_mock_transcript_for_source(db, project_id, source.id)
+        transcript = create_transcript_for_source(db, project_id, source)
     candidates = []
     for segment in transcript.segments:
         score = segment_score(segment); category = "debate_heat" if "ask" in segment.text.lower() or "mistake" in segment.text.lower() else "story_mode"
