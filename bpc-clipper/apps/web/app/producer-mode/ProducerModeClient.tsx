@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   Candidate,
   ExportRecord,
+  absoluteApiUrl,
   createEditTimeline,
   createExport,
   generateCandidates,
@@ -52,6 +53,22 @@ function formatTime(seconds: number) {
 
 function formatCategory(category: string) {
   return category.replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function ExportLinks({ exportRecord }: { exportRecord: ExportRecord }) {
+  const videoUrl = absoluteApiUrl(exportRecord.download_urls?.video);
+  const srtUrl = absoluteApiUrl(exportRecord.download_urls?.srt);
+  const vttUrl = absoluteApiUrl(exportRecord.download_urls?.vtt);
+  const metadataUrl = absoluteApiUrl(exportRecord.download_urls?.metadata);
+
+  return (
+    <div className="button-row" style={{ marginTop: 10 }}>
+      {videoUrl && <a className="button" href={videoUrl} target="_blank" rel="noreferrer">Open MP4</a>}
+      {srtUrl && <a className="button secondary" href={srtUrl} target="_blank" rel="noreferrer">SRT</a>}
+      {vttUrl && <a className="button secondary" href={vttUrl} target="_blank" rel="noreferrer">VTT</a>}
+      {metadataUrl && <a className="button secondary" href={metadataUrl} target="_blank" rel="noreferrer">Metadata</a>}
+    </div>
+  );
 }
 
 export function ProducerModeClient({ projectId }: { projectId?: string }) {
@@ -178,9 +195,8 @@ export function ProducerModeClient({ projectId }: { projectId?: string }) {
                     {workflow.exportRecord && (
                       <>
                         <p><strong>Export ID:</strong> {workflow.exportRecord.export_id}</p>
-                        <p><strong>Video path:</strong> {workflow.exportRecord.video_path || 'Not ready yet'}</p>
-                        <p><strong>SRT:</strong> {workflow.exportRecord.srt_path || 'Not generated'}</p>
-                        <p><strong>VTT:</strong> {workflow.exportRecord.vtt_path || 'Not generated'}</p>
+                        <p><strong>Status:</strong> {workflow.exportRecord.status}</p>
+                        <ExportLinks exportRecord={workflow.exportRecord} />
                       </>
                     )}
                     {workflow.error && <p style={{ color: '#ff8a8a' }}><strong>Error:</strong> {workflow.error}</p>}
