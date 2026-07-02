@@ -6,6 +6,7 @@ from typing import Literal
 from uuid import uuid4
 
 from database import create_db_and_tables, get_db
+from export_downloads import router as export_download_router
 from link_importer import import_direct_media_url
 from local_storage import save_uploaded_file
 from media_probe import probe_media
@@ -21,7 +22,8 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="BPC Clipper API", version="0.10.0", lifespan=lifespan)
+app = FastAPI(title="BPC Clipper API", version="0.11.0", lifespan=lifespan)
+app.include_router(export_download_router, prefix="/api/v1")
 
 
 class ProjectCreate(BaseModel):
@@ -89,7 +91,7 @@ def serialize_edit_timeline(edit: EditTimeline) -> dict:
 
 
 def serialize_export(export: ExportRecord) -> dict:
-    return {"export_id": export.id, "project_id": export.project_id, "edit_timeline_id": export.edit_timeline_id, "status": export.status, "format": export.format, "include_burned_captions": export.include_burned_captions, "include_srt": export.include_srt, "include_vtt": export.include_vtt, "include_metadata": export.include_metadata, "video_path": export.video_path, "srt_path": export.srt_path, "vtt_path": export.vtt_path, "metadata_path": export.metadata_path, "error": export.error_message}
+    return {"export_id": export.id, "project_id": export.project_id, "edit_timeline_id": export.edit_timeline_id, "status": export.status, "format": export.format, "include_burned_captions": export.include_burned_captions, "include_srt": export.include_srt, "include_vtt": export.include_vtt, "include_metadata": export.include_metadata, "video_path": export.video_path, "srt_path": export.srt_path, "vtt_path": export.vtt_path, "metadata_path": export.metadata_path, "download_urls": {"video": f"/api/v1/exports/{export.id}/files/video" if export.video_path else None, "srt": f"/api/v1/exports/{export.id}/files/srt" if export.srt_path else None, "vtt": f"/api/v1/exports/{export.id}/files/vtt" if export.vtt_path else None, "metadata": f"/api/v1/exports/{export.id}/files/metadata" if export.metadata_path else None}, "error": export.error_message}
 
 
 def make_job_for_source(project_id: str, source: Source, message: str, status: str = "queued") -> Job:
