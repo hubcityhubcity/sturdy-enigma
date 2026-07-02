@@ -3,6 +3,7 @@ import subprocess
 from pathlib import Path
 
 from caption_presets import ffmpeg_force_style
+from caption_segments import build_caption_segments
 from local_storage import STORAGE_ROOT
 from models import EditTimeline, ExportRecord, Source
 
@@ -24,25 +25,35 @@ def export_dir(project_id: str, export_id: str) -> Path:
     return path
 
 
+def caption_duration(edit: EditTimeline) -> float:
+    return max(1.0, edit.end_seconds - edit.start_seconds)
+
+
 def build_srt(edit: EditTimeline) -> str:
     text = edit.hook_text or "BPC export placeholder"
-    return "\n".join([
-        "1",
-        f"{format_timestamp(0)} --> {format_timestamp(max(1.0, edit.end_seconds - edit.start_seconds))}",
-        text,
-        "",
-    ])
+    segments = build_caption_segments(text, caption_duration(edit))
+    blocks = []
+    for segment in segments:
+        blocks.extend([
+            str(segment.index),
+            f"{format_timestamp(segment.start_seconds)} --> {format_timestamp(segment.end_seconds)}",
+            segment.text,
+            "",
+        ])
+    return "\n".join(blocks)
 
 
 def build_vtt(edit: EditTimeline) -> str:
     text = edit.hook_text or "BPC export placeholder"
-    return "\n".join([
-        "WEBVTT",
-        "",
-        f"{format_timestamp(0, '.')} --> {format_timestamp(max(1.0, edit.end_seconds - edit.start_seconds), '.')}",
-        text,
-        "",
-    ])
+    segments = build_caption_segments(text, caption_duration(edit))
+    lines = ["WEBVTT", ""]
+    for segment in segments:
+        lines.extend([
+            f"{format_timestamp(segment.start_seconds, '.')} --> {format_timestamp(segment.end_seconds, '.')}",
+            segment.text,
+            "",
+        ])
+    return "\n".join(lines)
 
 
 def is_vertical_format(export_format: str) -> bool:
@@ -72,6 +83,7 @@ def write_sidecar_files(export: ExportRecord, edit: EditTimeline, video_path: Pa
     metadata_path = folder / "metadata.json"
     srt_path = folder / "captions.srt"
     vtt_path = folder / "captions.vtt"
+    caption_segments = build_caption_segments(edit.hook_text or "BPC export placeholder", caption_duration(edit))
 
     metadata = {
         "export_id": export.id,
@@ -83,6 +95,7 @@ def write_sidecar_files(export: ExportRecord, edit: EditTimeline, video_path: Pa
         "duration_seconds": round(edit.end_seconds - edit.start_seconds, 3),
         "hook_text": edit.hook_text,
         "caption_preset": edit.caption_preset,
+        "caption_segment_count": len(caption_segments),
         "crop_mode": edit.crop_mode,
         "status": render_status,
         "video_path": str(video_path),
@@ -122,6 +135,7 @@ def render_trimmed_mp4(export: ExportRecord, edit: EditTimeline, source: Source 
     - 1080x1920 vertical crop for Shorts/TikTok/Reels formats
     - optional burned captions from generated SRT
     - caption style presets applied through FFmpeg force_style
+    - readable segmented captions
     """
     if source is None or not source.storage_path:
         return create_placeholder_export_files(export, edit)
@@ -132,7 +146,7 @@ def render_trimmed_mp4(export: ExportRecord, edit: EditTimeline, source: Source 
 
     folder = export_dir(export.project_id, export.id)
     output_path = folder / "clip.mp4"
-    duration = max(1.0, edit.end_seconds - edit.start_seconds)
+    duration = caption_duration(edit)
     srt_path = folder / "captions.srt"
     if export.include_burned_captions:
         srt_path.write_text(build_srt(edit), encoding="utf-8")
@@ -169,7 +183,7 @@ def render_trimmed_mp4(export: ExportRecord, edit: EditTimeline, source: Source 
         return create_placeholder_export_files(export, edit)
 
     if export.include_burned_captions:
-        status = "ffmpeg_burned_captions_complete"
+        status = "ffmpeg_burned_segmented_captions_complete"
     elif is_vertical_format(export.format):
         status = "ffmpeg_vertical_9x16_complete"
     else:
