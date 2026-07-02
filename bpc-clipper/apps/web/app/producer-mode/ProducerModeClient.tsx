@@ -4,11 +4,15 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   Candidate,
   ExportRecord,
+  RenderJob,
   absoluteApiUrl,
   createEditTimeline,
   createExport,
   generateCandidates,
+  getExport,
+  getRenderJob,
   listCandidates,
+  queueRenderExport,
   renderExport,
 } from '../../lib/api';
 
@@ -42,6 +46,7 @@ const fallbackCandidates: Candidate[] = [
 type CandidateWorkflowState = {
   status: string;
   exportRecord?: ExportRecord;
+  renderJob?: RenderJob;
   error?: string;
 };
 
@@ -53,6 +58,10 @@ function formatTime(seconds: number) {
 
 function formatCategory(category: string) {
   return category.replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function sleep(milliseconds: number) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
 function ExportLinks({ exportRecord }: { exportRecord: ExportRecord }) {
@@ -96,7 +105,7 @@ export function ProducerModeClient({ projectId }: { projectId?: string }) {
 
         const generated = await generateCandidates(projectId);
         setCandidates(generated.candidates);
-        setStatus('Generated fresh mock candidates.');
+        setStatus('Generated fresh candidates.');
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : 'Unable to load candidates.');
         setStatus('Showing demo candidates because the API did not respond.');
@@ -106,19 +115,42 @@ export function ProducerModeClient({ projectId }: { projectId?: string }) {
     loadCandidates();
   }, [projectId]);
 
-  async function approveAndRender(candidate: Candidate) {
+  function updateWorkflow(candidateId: string, next: CandidateWorkflowState) {
+    setWorkflowByCandidate((current) => ({
+      ...current,
+      [candidateId]: next,
+    }));
+  }
+
+  async function pollRenderJob(candidateId: string, job: RenderJob, exportId: string) {
+    let currentJob = job;
+    for (let attempt = 0; attempt < 60; attempt += 1) {
+      currentJob = await getRenderJob(job.job_id);
+      const refreshedExport = await getExport(exportId);
+
+      updateWorkflow(candidateId, {
+        status: `Queued render: ${currentJob.status} (${currentJob.progress}%)`,
+        exportRecord: refreshedExport,
+        renderJob: currentJob,
+      });
+
+      if (currentJob.status === 'complete' || currentJob.status === 'failed') {
+        return { job: currentJob, exportRecord: refreshedExport };
+      }
+
+      await sleep(2000);
+    }
+
+    throw new Error('Render job polling timed out. Worker may not be running.');
+  }
+
+  async function approveAndQueueRender(candidate: Candidate) {
     if (!projectId || candidate.project_id === 'demo') {
-      setWorkflowByCandidate((current) => ({
-        ...current,
-        [candidate.candidate_id]: { status: 'Create a real project first to approve and render.' },
-      }));
+      updateWorkflow(candidate.candidate_id, { status: 'Create a real project first to approve and render.' });
       return;
     }
 
-    setWorkflowByCandidate((current) => ({
-      ...current,
-      [candidate.candidate_id]: { status: 'Approving candidate...' },
-    }));
+    updateWorkflow(candidate.candidate_id, { status: 'Approving candidate...' });
 
     try {
       const edit = await createEditTimeline(candidate.candidate_id, {
@@ -127,12 +159,9 @@ export function ProducerModeClient({ projectId }: { projectId?: string }) {
         crop_mode: 'speaker_focus',
       });
 
-      setWorkflowByCandidate((current) => ({
-        ...current,
-        [candidate.candidate_id]: { status: 'Creating vertical export...' },
-      }));
+      updateWorkflow(candidate.candidate_id, { status: 'Creating vertical export...' });
 
-      const queuedExport = await createExport(edit.edit_id, {
+      const exportRecord = await createExport(edit.edit_id, {
         format: 'vertical_1080x1920',
         include_burned_captions: true,
         include_srt: true,
@@ -140,24 +169,65 @@ export function ProducerModeClient({ projectId }: { projectId?: string }) {
         include_metadata: true,
       });
 
-      setWorkflowByCandidate((current) => ({
-        ...current,
-        [candidate.candidate_id]: { status: 'Rendering vertical clip...', exportRecord: queuedExport },
-      }));
+      updateWorkflow(candidate.candidate_id, {
+        status: 'Queueing render job...',
+        exportRecord,
+      });
 
-      const renderedExport = await renderExport(queuedExport.export_id);
-      setWorkflowByCandidate((current) => ({
-        ...current,
-        [candidate.candidate_id]: { status: `Render finished: ${renderedExport.status}`, exportRecord: renderedExport },
-      }));
+      const renderJob = await queueRenderExport(exportRecord.export_id);
+      updateWorkflow(candidate.candidate_id, {
+        status: `Queued render: ${renderJob.status} (${renderJob.progress}%)`,
+        exportRecord,
+        renderJob,
+      });
+
+      const result = await pollRenderJob(candidate.candidate_id, renderJob, exportRecord.export_id);
+      updateWorkflow(candidate.candidate_id, {
+        status: result.job.status === 'complete' ? 'Render complete.' : 'Render failed.',
+        exportRecord: result.exportRecord,
+        renderJob: result.job,
+        error: result.job.error || undefined,
+      });
     } catch (caught) {
-      setWorkflowByCandidate((current) => ({
-        ...current,
-        [candidate.candidate_id]: {
-          status: 'Workflow failed.',
-          error: caught instanceof Error ? caught.message : 'Unable to approve and render candidate.',
-        },
-      }));
+      updateWorkflow(candidate.candidate_id, {
+        status: 'Queued render workflow failed.',
+        error: caught instanceof Error ? caught.message : 'Unable to approve and queue render candidate.',
+      });
+    }
+  }
+
+  async function approveAndRenderNow(candidate: Candidate) {
+    if (!projectId || candidate.project_id === 'demo') {
+      updateWorkflow(candidate.candidate_id, { status: 'Create a real project first to approve and render.' });
+      return;
+    }
+
+    updateWorkflow(candidate.candidate_id, { status: 'Approving candidate for immediate render...' });
+
+    try {
+      const edit = await createEditTimeline(candidate.candidate_id, {
+        hook_text: candidate.excerpt,
+        caption_preset: candidate.category === 'debate_heat' ? 'bpc_debate_heat' : 'bpc_clean_editorial',
+        crop_mode: 'speaker_focus',
+      });
+      const exportRecord = await createExport(edit.edit_id, {
+        format: 'vertical_1080x1920',
+        include_burned_captions: true,
+        include_srt: true,
+        include_vtt: true,
+        include_metadata: true,
+      });
+      updateWorkflow(candidate.candidate_id, { status: 'Rendering immediately...', exportRecord });
+      const renderedExport = await renderExport(exportRecord.export_id);
+      updateWorkflow(candidate.candidate_id, {
+        status: `Immediate render finished: ${renderedExport.status}`,
+        exportRecord: renderedExport,
+      });
+    } catch (caught) {
+      updateWorkflow(candidate.candidate_id, {
+        status: 'Immediate render failed.',
+        error: caught instanceof Error ? caught.message : 'Unable to render immediately.',
+      });
     }
   }
 
@@ -192,10 +262,16 @@ export function ProducerModeClient({ projectId }: { projectId?: string }) {
                 {workflow && (
                   <div className="card" style={{ marginTop: 12 }}>
                     <p><strong>Workflow:</strong> {workflow.status}</p>
+                    {workflow.renderJob && (
+                      <>
+                        <p><strong>Render Job ID:</strong> {workflow.renderJob.job_id}</p>
+                        <p><strong>Render Job:</strong> {workflow.renderJob.status} / {workflow.renderJob.progress}%</p>
+                      </>
+                    )}
                     {workflow.exportRecord && (
                       <>
                         <p><strong>Export ID:</strong> {workflow.exportRecord.export_id}</p>
-                        <p><strong>Status:</strong> {workflow.exportRecord.status}</p>
+                        <p><strong>Export Status:</strong> {workflow.exportRecord.status}</p>
                         <ExportLinks exportRecord={workflow.exportRecord} />
                       </>
                     )}
@@ -204,11 +280,11 @@ export function ProducerModeClient({ projectId }: { projectId?: string }) {
                 )}
               </div>
               <div className="button-row">
-                <button className="button" type="button" onClick={() => approveAndRender(candidate)}>
-                  Approve + Render
+                <button className="button" type="button" onClick={() => approveAndQueueRender(candidate)}>
+                  Approve + Queue Render
                 </button>
-                <button className="button secondary" type="button" onClick={() => approveAndRender(candidate)}>
-                  Quick Export
+                <button className="button secondary" type="button" onClick={() => approveAndRenderNow(candidate)}>
+                  Render Now
                 </button>
               </div>
             </article>
