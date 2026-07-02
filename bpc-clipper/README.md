@@ -18,6 +18,7 @@ The app can now:
 - Render a basic trimmed MP4 with FFmpeg when source media is available.
 - Render 1080x1920 vertical exports for Shorts/TikTok/Reels formats.
 - Burn segmented captions into the MP4 when requested.
+- Queue export render jobs for a background worker.
 - Serve MP4, SRT, VTT, and metadata files through API download routes.
 
 ## Stack
@@ -42,7 +43,7 @@ The app can now:
 8. Approve candidate.
 9. Create edit timeline.
 10. Create export.
-11. Render vertical clip.
+11. Render vertical clip immediately or queue it for the worker.
 12. Open or download MP4/SRT/VTT/metadata.
 
 ## Folder layout
@@ -95,6 +96,47 @@ Health check:
 ```bash
 curl http://localhost:8000/api/v1/health
 ```
+
+## Run the render worker locally
+
+Start the API in one terminal. In a second terminal, from `bpc-clipper/services/api` run:
+
+```bash
+source .venv/bin/activate
+python render_worker.py
+```
+
+On Windows PowerShell:
+
+```powershell
+.venv\Scripts\Activate.ps1
+python render_worker.py
+```
+
+The worker polls the database for queued render jobs and processes one job at a time.
+
+## Queued render flow
+
+Immediate render still exists:
+
+```text
+POST /api/v1/exports/{export_id}/render
+```
+
+Queued render uses the worker:
+
+```text
+POST /api/v1/exports/{export_id}/queue-render
+GET /api/v1/render-jobs/{job_id}
+```
+
+Typical queued flow:
+
+1. Create an export.
+2. Queue the export render.
+3. Start or keep `python render_worker.py` running.
+4. Poll the render job until status is `complete` or `failed`.
+5. Fetch the export and open the download URLs.
 
 ## Database migrations
 
@@ -293,7 +335,7 @@ A user can create a project, add a source, generate candidates, approve one, ren
 
 ## Next engineering targets
 
-- Add render queue/background worker.
+- Wire Producer Mode to queued render jobs.
 - Add better caption timing from transcript words.
 - Add smart crop/face tracking.
 - Add render progress polling.
