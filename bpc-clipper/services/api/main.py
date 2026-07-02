@@ -13,6 +13,7 @@ from link_importer import import_direct_media_url
 from local_storage import save_uploaded_file
 from media_probe import probe_media
 from models import CandidateClip, EditTimeline, ExportRecord, Job, Project, Source, Transcript, TranscriptSegment, TranscriptWord
+from render_queue_routes import router as render_queue_router
 from render_scaffold import create_placeholder_export_files
 from render_service import render_export_with_best_source
 from transcription_adapter import get_transcription_provider
@@ -25,9 +26,10 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="BPC Clipper API", version="0.14.0", lifespan=lifespan)
+app = FastAPI(title="BPC Clipper API", version="0.15.0", lifespan=lifespan)
 app.include_router(export_download_router, prefix="/api/v1")
 app.include_router(transcription_router, prefix="/api/v1")
+app.include_router(render_queue_router, prefix="/api/v1")
 
 
 class ProjectCreate(BaseModel):
