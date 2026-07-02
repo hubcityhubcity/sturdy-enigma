@@ -16,6 +16,7 @@ import {
   listCandidates,
   queueRenderExport,
   renderExport,
+  rescoreCandidates,
 } from '../../lib/api';
 
 const fallbackCandidates: Candidate[] = [
@@ -153,6 +154,7 @@ export function ProducerModeClient({ projectId }: { projectId?: string }) {
   const [status, setStatus] = useState(projectId ? 'Loading project candidates...' : 'Showing demo candidates.');
   const [error, setError] = useState('');
   const [workflowByCandidate, setWorkflowByCandidate] = useState<Record<string, CandidateWorkflowState>>({});
+  const [isRescoring, setIsRescoring] = useState(false);
 
   const sortedCandidates = useMemo(
     () => [...candidates].sort((a, b) => b.score - a.score),
@@ -188,6 +190,28 @@ export function ProducerModeClient({ projectId }: { projectId?: string }) {
       ...current,
       [candidateId]: next,
     }));
+  }
+
+  async function rescoreProject() {
+    if (!projectId) {
+      setStatus('Create a real project first to rescore candidates.');
+      return;
+    }
+
+    setIsRescoring(true);
+    setError('');
+    setStatus('Rescoring candidates with BPC Brain...');
+
+    try {
+      const result = await rescoreCandidates(projectId);
+      setCandidates(result.candidates);
+      setStatus(`BPC Brain rescored ${result.updated_count} candidate(s).`);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Unable to rescore candidates.');
+      setStatus('Candidate rescore failed.');
+    } finally {
+      setIsRescoring(false);
+    }
   }
 
   async function pollRenderJob(candidateId: string, job: RenderJob, exportId: string) {
@@ -306,6 +330,11 @@ export function ProducerModeClient({ projectId }: { projectId?: string }) {
         <p>{status}</p>
         {projectId && <p><strong>Project ID:</strong> {projectId}</p>}
         {error && <p style={{ color: '#ff8a8a' }}><strong>API note:</strong> {error}</p>}
+        <div className="button-row" style={{ marginTop: 12 }}>
+          <button className="button secondary" type="button" onClick={rescoreProject} disabled={isRescoring || !projectId}>
+            {isRescoring ? 'Rescoring...' : 'Rescore with BPC Brain'}
+          </button>
+        </div>
       </section>
 
       <section style={{ display: 'grid', gap: 18, marginTop: 24 }}>
