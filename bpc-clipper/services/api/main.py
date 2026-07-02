@@ -1,11 +1,13 @@
 from contextlib import asynccontextmanager
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, HttpUrl
 from sqlalchemy.orm import Session
 from typing import Literal
 from uuid import uuid4
 
 from database import create_db_and_tables, get_db
+from local_storage import save_uploaded_file
+from media_probe import probe_media
 from models import CandidateClip, Job, Project, Source
 
 
@@ -15,7 +17,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="BPC Clipper API", version="0.3.0", lifespan=lifespan)
+app = FastAPI(title="BPC Clipper API", version="0.4.0", lifespan=lifespan)
 
 
 class ProjectCreate(BaseModel):
@@ -126,6 +128,66 @@ def list_sources(project_id: str, db: Session = Depends(get_db)):
 
     sources = db.query(Source).filter(Source.project_id == project_id).all()
     return {"project_id": project_id, "sources": [serialize_source(source) for source in sources]}
+
+
+@app.post("/api/v1/projects/{project_id}/sources/upload")
+async def create_upload_source(
+    project_id: str,
+    rights_confirmed: bool = Form(...),
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+):
+    if not rights_confirmed:
+        raise HTTPException(status_code=400, detail="rights_confirmation_required")
+
+    project = db.get(Project, project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="project_not_found")
+
+    saved_path = await save_uploaded_file(project_id, file)
+    probe = probe_media(str(saved_path))
+
+    source = Source(
+        id=str(uuid4()),
+        project_id=project_id,
+        source_type="upload",
+        original_filename=file.filename,
+        title=file.filename,
+        storage_path=str(saved_path),
+        duration_seconds=probe.duration_seconds,
+        width=probe.width,
+        height=probe.height,
+        fps=probe.fps,
+        video_codec=probe.video_codec,
+        audio_codec=probe.audio_codec,
+        validation_status=probe.validation_status,
+        validation_message=probe.validation_message,
+        rights_confirmed=rights_confirmed,
+    )
+    db.add(source)
+    db.flush()
+
+    job = Job(
+        id=str(uuid4()),
+        project_id=project_id,
+        source_id=source.id,
+        stage="probing_media" if probe.validation_status != "valid" else "queued",
+        progress=25 if probe.validation_status != "valid" else 0,
+        message=probe.validation_message if probe.validation_status != "valid" else "Upload source queued for processing",
+        status="needs_attention" if probe.validation_status != "valid" else "queued",
+    )
+    project.source_type = "upload"
+    db.add(job)
+    db.commit()
+    db.refresh(source)
+    db.refresh(job)
+
+    return {
+        "project_id": project_id,
+        "source": serialize_source(source),
+        "job_id": job.id,
+        "status": job.status,
+    }
 
 
 @app.post("/api/v1/projects/{project_id}/sources/link")
