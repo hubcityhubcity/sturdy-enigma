@@ -27,7 +27,7 @@ The app can now:
 - Worker: Python scaffold
 - Database: SQLite by default, PostgreSQL-ready through `DATABASE_URL`
 - Media tools: FFmpeg / FFprobe
-- Transcription: provider adapter, mock default, Whisper scaffold optional
+- Transcription: provider adapter, mock default, Whisper optional
 
 ## Main workflow
 
@@ -117,7 +117,7 @@ TRANSCRIPTION_PROVIDER=mock
 WHISPER_MODEL=base
 ```
 
-To prepare for Whisper later:
+To run the API with Whisper enabled:
 
 ```bash
 TRANSCRIPTION_PROVIDER=whisper
@@ -125,7 +125,7 @@ WHISPER_MODEL=base
 uvicorn main:app --reload --port 8000
 ```
 
-Important: the Whisper provider is currently a scaffold and intentionally raises until model loading is implemented. Keep `TRANSCRIPTION_PROVIDER=mock` for the working pipeline until the real provider is completed.
+Whisper model choices include `tiny`, `base`, `small`, `medium`, and `large`. Start with `base` for local testing.
 
 ## Local database reset during scaffold development
 
@@ -213,6 +213,28 @@ The script will:
 7. Render the export.
 8. Print MP4, SRT, VTT, and metadata download URLs.
 
+## Real transcription check
+
+Use this after creating a project/source through the UI or pipeline script.
+
+With a known source ID:
+
+```bash
+SOURCE_ID="your-source-id" TRANSCRIPTION_PROVIDER=whisper node scripts/check-real-transcript.mjs
+```
+
+Or with a project ID, using that project's newest source:
+
+```bash
+PROJECT_ID="your-project-id" TRANSCRIPTION_PROVIDER=whisper node scripts/check-real-transcript.mjs
+```
+
+For a mock check through the real transcript endpoint:
+
+```bash
+SOURCE_ID="your-source-id" TRANSCRIPTION_PROVIDER=mock node scripts/check-real-transcript.mjs
+```
+
 ## Export download routes
 
 For any completed export:
@@ -230,7 +252,6 @@ A user can create a project, add a source, generate candidates, approve one, ren
 
 ## Next engineering targets
 
-- Implement Whisper provider model loading.
 - Add Alembic migrations.
 - Add render queue/background worker.
 - Add better caption timing from transcript words.
