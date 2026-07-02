@@ -2,6 +2,7 @@ import json
 import subprocess
 from pathlib import Path
 
+from caption_presets import ffmpeg_force_style
 from local_storage import STORAGE_ROOT
 from models import EditTimeline, ExportRecord, Source
 
@@ -52,7 +53,7 @@ def ffmpeg_subtitle_path(path: Path) -> str:
     return str(path).replace("\\", "/").replace(":", "\\:")
 
 
-def build_video_filter(export: ExportRecord, srt_path: Path | None) -> str | None:
+def build_video_filter(export: ExportRecord, edit: EditTimeline, srt_path: Path | None) -> str | None:
     filters: list[str] = []
     if is_vertical_format(export.format):
         filters.extend([
@@ -61,7 +62,8 @@ def build_video_filter(export: ExportRecord, srt_path: Path | None) -> str | Non
             "setsar=1",
         ])
     if export.include_burned_captions and srt_path is not None:
-        filters.append(f"subtitles={ffmpeg_subtitle_path(srt_path)}")
+        style = ffmpeg_force_style(edit.caption_preset)
+        filters.append(f"subtitles={ffmpeg_subtitle_path(srt_path)}:force_style='{style}'")
     return ",".join(filters) if filters else None
 
 
@@ -119,6 +121,7 @@ def render_trimmed_mp4(export: ExportRecord, edit: EditTimeline, source: Source 
     - source aspect ratio trim
     - 1080x1920 vertical crop for Shorts/TikTok/Reels formats
     - optional burned captions from generated SRT
+    - caption style presets applied through FFmpeg force_style
     """
     if source is None or not source.storage_path:
         return create_placeholder_export_files(export, edit)
@@ -133,7 +136,7 @@ def render_trimmed_mp4(export: ExportRecord, edit: EditTimeline, source: Source 
     srt_path = folder / "captions.srt"
     if export.include_burned_captions:
         srt_path.write_text(build_srt(edit), encoding="utf-8")
-    vf = build_video_filter(export, srt_path if export.include_burned_captions else None)
+    vf = build_video_filter(export, edit, srt_path if export.include_burned_captions else None)
 
     command = [
         "ffmpeg",
