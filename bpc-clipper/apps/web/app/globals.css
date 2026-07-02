@@ -1,0 +1,140 @@
+:root {
+  --bg: #08080b;
+  --panel: #12121a;
+  --panel-2: #191925;
+  --text: #f6f4ef;
+  --muted: #a7a3b2;
+  --accent: #f5c542;
+  --line: #2a2936;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: radial-gradient(circle at top left, #231a37, var(--bg) 42%);
+  color: var(--text);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+.app-shell {
+  min-height: 100vh;
+  padding: 32px;
+}
+
+.container {
+  max-width: 1180px;
+  margin: 0 auto;
+}
+
+.hero {
+  padding: 48px;
+  border: 1px solid var(--line);
+  background: linear-gradient(135deg, rgba(245,197,66,.13), rgba(255,255,255,.03));
+  border-radius: 28px;
+}
+
+.kicker {
+  color: var(--accent);
+  font-weight: 800;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  font-size: 12px;
+}
+
+h1 {
+  font-size: 56px;
+  line-height: 1.02;
+  margin: 16px 0;
+}
+
+h2 { margin-top: 0; }
+
+p {
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+  margin-top: 24px;
+}
+
+.card {
+  border: 1px solid var(--line);
+  background: var(--panel);
+  border-radius: 20px;
+  padding: 22px;
+}
+
+.card strong { color: var(--text); }
+
+.button-row {
+  display: flex;
+  gap: 12px;
+  margin-top: 24px;
+  flex-wrap: wrap;
+}
+
+.button {
+  display: inline-block;
+  border: 1px solid var(--line);
+  background: var(--accent);
+  color: #17120a;
+  padding: 13px 18px;
+  border-radius: 999px;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.button.secondary {
+  background: transparent;
+  color: var(--text);
+}
+
+.form {
+  display: grid;
+  gap: 16px;
+  margin-top: 24px;
+}
+
+.input, .select {
+  width: 100%;
+  padding: 14px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  color: var(--text);
+}
+
+.candidate {
+  display: grid;
+  grid-template-columns: 110px 1fr 120px;
+  gap: 18px;
+  align-items: start;
+}
+
+.score {
+  font-size: 38px;
+  color: var(--accent);
+  font-weight: 900;
+}
+
+.badge {
+  display: inline-block;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(245,197,66,.12);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+@media (max-width: 800px) {
+  .grid { grid-template-columns: 1fr; }
+  h1 { font-size: 38px; }
+  .hero { padding: 28px; }
+  .candidate { grid-template-columns: 1fr; }
+}
