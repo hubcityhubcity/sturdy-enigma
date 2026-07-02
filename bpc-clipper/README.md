@@ -12,6 +12,7 @@ The app can now:
 - Validate media with FFprobe when available.
 - Generate mock transcript data with word timings.
 - Generate ranked candidate clips from transcript segments.
+- Link candidate clips to the exact source media used for rendering.
 - Approve a candidate into an editable timeline.
 - Create an export record.
 - Render a basic trimmed MP4 with FFmpeg when source media is available.
@@ -92,6 +93,33 @@ Health check:
 curl http://localhost:8000/api/v1/health
 ```
 
+## Local database reset during scaffold development
+
+This scaffold currently uses SQLAlchemy `create_all()` and does not yet include Alembic migrations.
+
+When the data model changes, an existing local SQLite database may not receive new columns automatically. If you see an error such as `no such column: candidate_clips.source_id`, reset the local API database.
+
+From `bpc-clipper/services/api`:
+
+```bash
+rm -f bpc_clipper.db
+```
+
+Then restart the API:
+
+```bash
+uvicorn main:app --reload --port 8000
+```
+
+On Windows PowerShell:
+
+```powershell
+Remove-Item .\bpc_clipper.db -ErrorAction SilentlyContinue
+uvicorn main:app --reload --port 8000
+```
+
+This deletes local scaffold data only. Do not use this reset approach for production data.
+
 ## Run the web app locally
 
 From `bpc-clipper/apps/web`:
@@ -168,9 +196,8 @@ A user can create a project, add a source, generate candidates, approve one, ren
 
 ## Next engineering targets
 
-- Add source-linked candidates instead of choosing newest project source.
+- Add Alembic migrations.
 - Replace mock transcription with a real transcription adapter.
-- Add proper migration management.
 - Add render queue/background worker.
 - Add better caption timing from transcript words.
 - Add smart crop/face tracking.
