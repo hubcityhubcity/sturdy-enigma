@@ -1,3 +1,4 @@
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
@@ -69,13 +70,17 @@ class MockTranscriptionProvider:
 class WhisperTranscriptionProvider:
     name = "whisper"
 
+    def __init__(self, model_name: str | None = None):
+        self.model_name = model_name or os.getenv("WHISPER_MODEL", "base")
+
     def transcribe(self, media_path: Path) -> TranscriptionResult:
         raise NotImplementedError(
-            "Whisper provider scaffold only. Install/configure a Whisper backend before enabling this provider."
+            "Whisper provider scaffold only. Install requirements-whisper.txt and implement model loading before enabling this provider."
         )
 
 
 def get_transcription_provider(provider_name: str | None = None) -> TranscriptionProvider:
-    if provider_name == "whisper":
+    selected_provider = provider_name or os.getenv("TRANSCRIPTION_PROVIDER", "mock")
+    if selected_provider == "whisper":
         return WhisperTranscriptionProvider()
     return MockTranscriptionProvider()
