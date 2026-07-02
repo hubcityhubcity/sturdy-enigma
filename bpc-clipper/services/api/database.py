@@ -22,6 +22,6 @@ def get_db():
 
 
 def create_db_and_tables():
-    from models import Project, Job, CandidateClip
+    from models import CandidateClip, Job, Project, Source
 
     Base.metadata.create_all(bind=engine)
