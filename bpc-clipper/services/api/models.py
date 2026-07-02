@@ -15,8 +15,34 @@ class Project(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
+    sources = relationship("Source", back_populates="project", cascade="all, delete-orphan")
     jobs = relationship("Job", back_populates="project", cascade="all, delete-orphan")
     candidates = relationship("CandidateClip", back_populates="project", cascade="all, delete-orphan")
+
+
+class Source(Base):
+    __tablename__ = "sources"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), nullable=False)
+    source_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    original_filename: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    original_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    title: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    storage_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    duration_seconds: Mapped[float | None] = mapped_column(Float, nullable=True)
+    width: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    height: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    fps: Mapped[float | None] = mapped_column(Float, nullable=True)
+    video_codec: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    audio_codec: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    validation_status: Mapped[str] = mapped_column(String(80), default="pending")
+    validation_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    rights_confirmed: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    project = relationship("Project", back_populates="sources")
+    jobs = relationship("Job", back_populates="source")
 
 
 class Job(Base):
@@ -24,6 +50,7 @@ class Job(Base):
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
     project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), nullable=False)
+    source_id: Mapped[str | None] = mapped_column(ForeignKey("sources.id"), nullable=True)
     stage: Mapped[str] = mapped_column(String(80), default="queued")
     progress: Mapped[int] = mapped_column(Integer, default=0)
     message: Mapped[str] = mapped_column(Text, default="Queued")
@@ -34,6 +61,7 @@ class Job(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     project = relationship("Project", back_populates="jobs")
+    source = relationship("Source", back_populates="jobs")
 
 
 class CandidateClip(Base):
