@@ -1,0 +1,59 @@
+{
+  "presets": [
+    {
+      "id": "bpc_clean_editorial",
+      "name": "BPC Clean Editorial",
+      "description": "Premium podcast look with readable captions and restrained motion.",
+      "caption_style": {
+        "max_lines": 2,
+        "emphasis": "key_words",
+        "safe_zone": true
+      },
+      "pacing": {
+        "silence_removal": "conservative",
+        "zoom_frequency": "low"
+      }
+    },
+    {
+      "id": "bpc_debate_heat",
+      "name": "BPC Debate Heat",
+      "description": "Faster pacing for disagreement, pushback, and high-energy debate moments.",
+      "caption_style": {
+        "max_lines": 2,
+        "speaker_labels": true,
+        "emphasis": "debate_keywords"
+      },
+      "pacing": {
+        "silence_removal": "medium",
+        "zoom_frequency": "medium"
+      }
+    },
+    {
+      "id": "bpc_story_mode",
+      "name": "BPC Story Mode",
+      "description": "Cleaner pacing for emotional or narrative clips.",
+      "caption_style": {
+        "max_lines": 2,
+        "emphasis": "emotional_words",
+        "safe_zone": true
+      },
+      "pacing": {
+        "silence_removal": "light",
+        "zoom_frequency": "low"
+      }
+    },
+    {
+      "id": "bpc_commentary_reaction",
+      "name": "BPC Commentary Reaction",
+      "description": "Layout-ready preset for future Hub City commentary and reaction clips.",
+      "caption_style": {
+        "max_lines": 2,
+        "safe_zone": true
+      },
+      "layout": {
+        "reaction_panel": true,
+        "source_panel": true
+      }
+    }
+  ]
+}
