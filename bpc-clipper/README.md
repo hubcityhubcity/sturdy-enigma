@@ -1,10 +1,19 @@
-# BPC Clipper
+# Titan Clipper AI
 
-Black Podcast Clips AI Clipper is a local-first application for turning long-form podcast content into ranked short-form clip candidates and vertical exports.
+**The AI production system for high-retention short-form content.**
+
+Titan Clipper AI is a local-first application for turning long-form video and podcast content into ranked short-form clip candidates and vertical exports. It is built first for **Black Podcast Clips**, with an architecture designed to grow into a broader creator production platform.
+
+## Official product naming
+
+- **Platform:** Titan AI
+- **Main product:** Titan Clipper AI
+- **Scoring and recommendation layer:** Titan Brain
+- **First flagship use case:** Black Podcast Clips
 
 ## Current milestone
 
-Producer workflow scaffold.
+Producer workflow scaffold with Titan Brain candidate scoring.
 
 The app can now:
 - Create a project through the FastAPI backend.
@@ -12,6 +21,8 @@ The app can now:
 - Validate media with FFprobe when available.
 - Generate transcript data through a provider adapter. Mock is the default provider.
 - Generate ranked candidate clips from transcript segments.
+- Score candidates with explainable Hook, Curiosity, Emotion, Debate, Story, and Retention signals.
+- Rescore existing candidates through Titan Brain.
 - Link candidate clips to the exact source media used for rendering.
 - Approve a candidate into an editable timeline.
 - Create an export record.
@@ -40,11 +51,44 @@ The app can now:
 5. Generate or load transcript.
 6. Generate candidate clips.
 7. Review in Producer Mode.
-8. Approve candidate.
-9. Create edit timeline.
-10. Create export.
-11. Render vertical clip immediately or queue it for the worker.
-12. Open or download MP4/SRT/VTT/metadata.
+8. Review Titan Brain score breakdowns.
+9. Optionally click `Rescore with BPC Brain` to refresh existing candidates.
+10. Approve candidate.
+11. Create edit timeline.
+12. Create export.
+13. Render vertical clip immediately or queue it for the worker.
+14. Open or download MP4/SRT/VTT/metadata.
+
+## Titan Brain scoring
+
+Titan Brain v1 uses deterministic, explainable heuristic scoring. It is not a guarantee of platform performance. Each candidate receives:
+
+- **Hook** — strength of the opening attention cue.
+- **Curiosity** — whether the language creates an information gap or open loop.
+- **Emotion** — intensity and emotional language signals.
+- **Debate** — tension, disagreement, or challenge signals.
+- **Story** — narrative structure and story cues.
+- **Retention** — pacing, duration, and filler-word checks.
+- **Overall** — weighted blend of the six signals.
+
+Generate new candidates with scores:
+
+```text
+POST /api/v1/projects/{project_id}/candidates/generate
+```
+
+Refresh scores for existing candidates:
+
+```text
+POST /api/v1/projects/{project_id}/candidates/rescore
+```
+
+After schema changes, apply migrations before rescoring:
+
+```bash
+cd bpc-clipper/services/api
+alembic upgrade head
+```
 
 ## Folder layout
 
@@ -174,7 +218,7 @@ alembic downgrade -1
 Use a non-default database with `DATABASE_URL`:
 
 ```bash
-DATABASE_URL="postgresql+psycopg://user:password@localhost:5432/bpc_clipper" alembic upgrade head
+DATABASE_URL="postgresql+psycopg://user:password@localhost:5432/titan_clipper" alembic upgrade head
 ```
 
 ## Optional Whisper transcription setup
@@ -262,8 +306,9 @@ http://localhost:3000
 6. Confirm permission.
 7. Submit.
 8. Open Producer Mode from the result.
-9. Click `Approve + Render` on a candidate.
-10. Open the generated MP4/SRT/VTT/metadata links.
+9. Review or rescore candidates with Titan Brain.
+10. Click `Approve + Render` on a candidate.
+11. Open the generated MP4/SRT/VTT/metadata links.
 
 ## End-to-end pipeline check
 
@@ -331,11 +376,11 @@ GET /api/v1/exports/{export_id}/files/metadata
 
 ## First MVP target
 
-A user can create a project, add a source, generate candidates, approve one, render a vertical clip with captions, and open the generated output files from Producer Mode.
+A user can create a project, add a source, generate candidates, inspect Titan Brain scores, approve one, render a vertical clip with captions, and open the generated output files from Producer Mode.
 
 ## Next engineering targets
 
-- Wire Producer Mode to queued render jobs.
 - Add better caption timing from transcript words.
 - Add smart crop/face tracking.
 - Add render progress polling.
+- Add AI copy packages for approved clips.
