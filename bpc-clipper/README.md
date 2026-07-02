@@ -28,6 +28,7 @@ The app can now:
 - Database: SQLite by default, PostgreSQL-ready through `DATABASE_URL`
 - Media tools: FFmpeg / FFprobe
 - Transcription: provider adapter, mock default, Whisper optional
+- Migrations: Alembic
 
 ## Main workflow
 
@@ -79,6 +80,7 @@ From `bpc-clipper/services/api`:
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
+alembic upgrade head
 uvicorn main:app --reload --port 8000
 ```
 
@@ -92,6 +94,45 @@ Health check:
 
 ```bash
 curl http://localhost:8000/api/v1/health
+```
+
+## Database migrations
+
+Alembic files live in:
+
+```text
+services/api/migrations
+```
+
+Create or update the local database:
+
+```bash
+cd bpc-clipper/services/api
+alembic upgrade head
+```
+
+Create a new migration after model changes:
+
+```bash
+alembic revision --autogenerate -m "describe change"
+```
+
+Apply the new migration:
+
+```bash
+alembic upgrade head
+```
+
+Rollback one migration:
+
+```bash
+alembic downgrade -1
+```
+
+Use a non-default database with `DATABASE_URL`:
+
+```bash
+DATABASE_URL="postgresql+psycopg://user:password@localhost:5432/bpc_clipper" alembic upgrade head
 ```
 
 ## Optional Whisper transcription setup
@@ -129,14 +170,13 @@ Whisper model choices include `tiny`, `base`, `small`, `medium`, and `large`. St
 
 ## Local database reset during scaffold development
 
-This scaffold currently uses SQLAlchemy `create_all()` and does not yet include Alembic migrations.
-
-When the data model changes, an existing local SQLite database may not receive new columns automatically. If you see an error such as `no such column: candidate_clips.source_id`, reset the local API database.
+Prefer Alembic migrations first. If the local SQLite database is badly out of sync during scaffold development, a reset is still available.
 
 From `bpc-clipper/services/api`:
 
 ```bash
 rm -f bpc_clipper.db
+alembic upgrade head
 ```
 
 Then restart the API:
@@ -149,6 +189,7 @@ On Windows PowerShell:
 
 ```powershell
 Remove-Item .\bpc_clipper.db -ErrorAction SilentlyContinue
+alembic upgrade head
 uvicorn main:app --reload --port 8000
 ```
 
@@ -252,7 +293,6 @@ A user can create a project, add a source, generate candidates, approve one, ren
 
 ## Next engineering targets
 
-- Add Alembic migrations.
 - Add render queue/background worker.
 - Add better caption timing from transcript words.
 - Add smart crop/face tracking.
