@@ -5,6 +5,8 @@ import {
   Candidate,
   ExportRecord,
   RenderJob,
+  ScoreBreakdown,
+  ScoreSignal,
   absoluteApiUrl,
   createEditTimeline,
   createExport,
@@ -28,6 +30,14 @@ const fallbackCandidates: Candidate[] = [
     category: 'debate_heat',
     explanation: 'Strong hook, clear contrast, clean payoff, low context risk.',
     risk_flags: [],
+    score_breakdown: {
+      hook: { name: 'hook', score: 92, explanation: 'Strong opening tension.' },
+      curiosity: { name: 'curiosity', score: 86, explanation: 'Creates a clear open loop.' },
+      emotion: { name: 'emotion', score: 78, explanation: 'Has urgency and intensity.' },
+      debate: { name: 'debate', score: 91, explanation: 'Conflict signal is strong.' },
+      story: { name: 'story', score: 61, explanation: 'Some narrative setup.' },
+      retention: { name: 'retention', score: 84, explanation: 'Good short-form length and pace.' },
+    },
   },
   {
     candidate_id: 'fallback-2',
@@ -40,8 +50,28 @@ const fallbackCandidates: Candidate[] = [
     category: 'story_mode',
     explanation: 'Good narrative structure and emotional clarity.',
     risk_flags: [],
+    score_breakdown: {
+      hook: { name: 'hook', score: 74, explanation: 'Solid opening.' },
+      curiosity: { name: 'curiosity', score: 76, explanation: 'Leaves room for payoff.' },
+      emotion: { name: 'emotion', score: 82, explanation: 'Emotional language is present.' },
+      debate: { name: 'debate', score: 35, explanation: 'Low conflict.' },
+      story: { name: 'story', score: 92, explanation: 'Strong story structure.' },
+      retention: { name: 'retention', score: 80, explanation: 'Good duration for shorts.' },
+    },
   },
 ];
+
+const scoreOrder: Array<keyof ScoreBreakdown> = ['hook', 'curiosity', 'emotion', 'debate', 'story', 'retention'];
+
+const scoreLabels: Record<string, string> = {
+  hook: 'Hook',
+  curiosity: 'Curiosity',
+  emotion: 'Emotion',
+  debate: 'Debate',
+  story: 'Story',
+  retention: 'Retention',
+  overall: 'Overall',
+};
 
 type CandidateWorkflowState = {
   status: string;
@@ -62,6 +92,44 @@ function formatCategory(category: string) {
 
 function sleep(milliseconds: number) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+function scoreTone(score: number) {
+  if (score >= 85) return 'Elite';
+  if (score >= 70) return 'Strong';
+  if (score >= 55) return 'Useful';
+  return 'Low';
+}
+
+function ScoreSignalRow({ signal }: { signal: ScoreSignal }) {
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '90px 52px 70px 1fr', gap: 10, alignItems: 'center', marginTop: 8 }}>
+      <strong>{scoreLabels[signal.name] || formatCategory(signal.name)}</strong>
+      <span>{signal.score}</span>
+      <span className="badge">{scoreTone(signal.score)}</span>
+      <span style={{ opacity: 0.85 }}>{signal.explanation}</span>
+    </div>
+  );
+}
+
+function ScoreBreakdownPanel({ breakdown }: { breakdown?: ScoreBreakdown }) {
+  const signals = scoreOrder
+    .map((key) => breakdown?.[key])
+    .filter(Boolean) as ScoreSignal[];
+
+  if (!signals.length) {
+    return <p><strong>BPC Brain:</strong> Score breakdown not available yet. Rescore this project after running migrations.</p>;
+  }
+
+  return (
+    <div className="card" style={{ marginTop: 12 }}>
+      <h3>BPC Brain</h3>
+      {breakdown?.overall && (
+        <p><strong>Overall:</strong> {breakdown.overall.score} — {breakdown.overall.explanation}</p>
+      )}
+      {signals.map((signal) => <ScoreSignalRow key={signal.name} signal={signal} />)}
+    </div>
+  );
 }
 
 function ExportLinks({ exportRecord }: { exportRecord: ExportRecord }) {
@@ -256,6 +324,7 @@ export function ProducerModeClient({ projectId }: { projectId?: string }) {
                 </p>
                 <p>{candidate.excerpt}</p>
                 <p><strong>Why it ranked:</strong> {candidate.explanation}</p>
+                <ScoreBreakdownPanel breakdown={candidate.score_breakdown} />
                 {candidate.risk_flags.length > 0 && (
                   <p><strong>Risk flags:</strong> {candidate.risk_flags.join(', ')}</p>
                 )}
