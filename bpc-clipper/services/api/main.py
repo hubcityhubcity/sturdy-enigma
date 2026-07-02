@@ -10,7 +10,7 @@ from link_importer import import_direct_media_url
 from local_storage import save_uploaded_file
 from media_probe import probe_media
 from mock_transcript import get_mock_segments, word_timings_for_segment
-from models import CandidateClip, EditTimeline, Job, Project, Source, Transcript, TranscriptSegment, TranscriptWord
+from models import CandidateClip, EditTimeline, ExportRecord, Job, Project, Source, Transcript, TranscriptSegment, TranscriptWord
 
 
 @asynccontextmanager
@@ -19,7 +19,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="BPC Clipper API", version="0.7.0", lifespan=lifespan)
+app = FastAPI(title="BPC Clipper API", version="0.8.0", lifespan=lifespan)
 
 
 class ProjectCreate(BaseModel):
@@ -50,6 +50,14 @@ class EditTimelineUpdate(BaseModel):
     settings: dict | None = None
 
 
+class ExportCreate(BaseModel):
+    format: str = "vertical_1080x1920"
+    include_burned_captions: bool = True
+    include_srt: bool = True
+    include_vtt: bool = True
+    include_metadata: bool = True
+
+
 def serialize_project(project: Project) -> dict:
     return {"project_id": project.id, "name": project.name, "source_type": project.source_type, "rights_confirmed": project.rights_confirmed, "status": project.status}
 
@@ -76,6 +84,10 @@ def serialize_candidate(candidate: CandidateClip) -> dict:
 
 def serialize_edit_timeline(edit: EditTimeline) -> dict:
     return {"edit_id": edit.id, "project_id": edit.project_id, "candidate_clip_id": edit.candidate_clip_id, "start_seconds": edit.start_seconds, "end_seconds": edit.end_seconds, "hook_text": edit.hook_text, "caption_preset": edit.caption_preset, "crop_mode": edit.crop_mode, "status": edit.status, "settings": edit.settings or {}}
+
+
+def serialize_export(export: ExportRecord) -> dict:
+    return {"export_id": export.id, "project_id": export.project_id, "edit_timeline_id": export.edit_timeline_id, "status": export.status, "format": export.format, "include_burned_captions": export.include_burned_captions, "include_srt": export.include_srt, "include_vtt": export.include_vtt, "include_metadata": export.include_metadata, "video_path": export.video_path, "srt_path": export.srt_path, "vtt_path": export.vtt_path, "metadata_path": export.metadata_path, "error": export.error_message}
 
 
 def make_job_for_source(project_id: str, source: Source, message: str, status: str = "queued") -> Job:
@@ -230,8 +242,7 @@ def create_edit_timeline(candidate_id: str, payload: EditTimelineCreate, db: Ses
     existing = db.query(EditTimeline).filter(EditTimeline.candidate_clip_id == candidate_id).first()
     if existing: return serialize_edit_timeline(existing)
     edit = EditTimeline(id=str(uuid4()), project_id=candidate.project_id, candidate_clip_id=candidate.id, start_seconds=candidate.start_seconds, end_seconds=candidate.end_seconds, hook_text=payload.hook_text or candidate.title, caption_preset=payload.caption_preset, crop_mode=payload.crop_mode, status="draft", settings={"source": "candidate_approval"})
-    candidate.status = "approved"
-    db.add(edit); db.commit(); db.refresh(edit)
+    candidate.status = "approved"; db.add(edit); db.commit(); db.refresh(edit)
     return serialize_edit_timeline(edit)
 
 
@@ -261,6 +272,29 @@ def update_edit_timeline(edit_id: str, payload: EditTimelineUpdate, db: Session 
     if payload.settings is not None: edit.settings = payload.settings
     db.commit(); db.refresh(edit)
     return serialize_edit_timeline(edit)
+
+
+@app.post("/api/v1/edits/{edit_id}/exports")
+def create_export(edit_id: str, payload: ExportCreate, db: Session = Depends(get_db)):
+    edit = db.get(EditTimeline, edit_id)
+    if edit is None: raise HTTPException(status_code=404, detail="edit_not_found")
+    export = ExportRecord(id=str(uuid4()), project_id=edit.project_id, edit_timeline_id=edit.id, status="queued", format=payload.format, include_burned_captions=payload.include_burned_captions, include_srt=payload.include_srt, include_vtt=payload.include_vtt, include_metadata=payload.include_metadata)
+    edit.status = "queued_for_export"
+    db.add(export); db.commit(); db.refresh(export)
+    return serialize_export(export)
+
+
+@app.get("/api/v1/projects/{project_id}/exports")
+def list_project_exports(project_id: str, db: Session = Depends(get_db)):
+    exports = db.query(ExportRecord).filter(ExportRecord.project_id == project_id).order_by(ExportRecord.created_at.desc()).all()
+    return {"project_id": project_id, "exports": [serialize_export(export) for export in exports]}
+
+
+@app.get("/api/v1/exports/{export_id}")
+def get_export(export_id: str, db: Session = Depends(get_db)):
+    export = db.get(ExportRecord, export_id)
+    if export is None: raise HTTPException(status_code=404, detail="export_not_found")
+    return serialize_export(export)
 
 
 @app.get("/api/v1/presets")
