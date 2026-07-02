@@ -6,7 +6,7 @@ from typing import Literal
 from uuid import uuid4
 
 from database import create_db_and_tables, get_db
-from models import CandidateClip, Job, Project
+from models import CandidateClip, Job, Project, Source
 
 
 @asynccontextmanager
@@ -15,7 +15,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="BPC Clipper API", version="0.2.0", lifespan=lifespan)
+app = FastAPI(title="BPC Clipper API", version="0.3.0", lifespan=lifespan)
 
 
 class ProjectCreate(BaseModel):
@@ -27,6 +27,7 @@ class ProjectCreate(BaseModel):
 class LinkSourceCreate(BaseModel):
     url: HttpUrl
     rights_confirmed: bool
+    title: str | None = None
 
 
 def serialize_project(project: Project) -> dict:
@@ -39,10 +40,32 @@ def serialize_project(project: Project) -> dict:
     }
 
 
+def serialize_source(source: Source) -> dict:
+    return {
+        "source_id": source.id,
+        "project_id": source.project_id,
+        "source_type": source.source_type,
+        "original_filename": source.original_filename,
+        "original_url": source.original_url,
+        "title": source.title,
+        "storage_path": source.storage_path,
+        "duration_seconds": source.duration_seconds,
+        "width": source.width,
+        "height": source.height,
+        "fps": source.fps,
+        "video_codec": source.video_codec,
+        "audio_codec": source.audio_codec,
+        "validation_status": source.validation_status,
+        "validation_message": source.validation_message,
+        "rights_confirmed": source.rights_confirmed,
+    }
+
+
 def serialize_job(job: Job) -> dict:
     return {
         "job_id": job.id,
         "project_id": job.project_id,
+        "source_id": job.source_id,
         "stage": job.stage,
         "progress": job.progress,
         "message": job.message,
@@ -95,6 +118,16 @@ def get_project(project_id: str, db: Session = Depends(get_db)):
     return serialize_project(project)
 
 
+@app.get("/api/v1/projects/{project_id}/sources")
+def list_sources(project_id: str, db: Session = Depends(get_db)):
+    project = db.get(Project, project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="project_not_found")
+
+    sources = db.query(Source).filter(Source.project_id == project_id).all()
+    return {"project_id": project_id, "sources": [serialize_source(source) for source in sources]}
+
+
 @app.post("/api/v1/projects/{project_id}/sources/link")
 def create_link_source(project_id: str, payload: LinkSourceCreate, db: Session = Depends(get_db)):
     if not payload.rights_confirmed:
@@ -104,9 +137,23 @@ def create_link_source(project_id: str, payload: LinkSourceCreate, db: Session =
     if project is None:
         raise HTTPException(status_code=404, detail="project_not_found")
 
+    source = Source(
+        id=str(uuid4()),
+        project_id=project_id,
+        source_type="link",
+        original_url=str(payload.url),
+        title=payload.title,
+        validation_status="pending_import",
+        validation_message="Link source recorded. Media import has not run yet.",
+        rights_confirmed=payload.rights_confirmed,
+    )
+    db.add(source)
+    db.flush()
+
     job = Job(
         id=str(uuid4()),
         project_id=project_id,
+        source_id=source.id,
         stage="queued",
         progress=0,
         message="Link source queued for import",
@@ -116,8 +163,22 @@ def create_link_source(project_id: str, payload: LinkSourceCreate, db: Session =
     project.source_type = "link"
     db.add(job)
     db.commit()
+    db.refresh(source)
     db.refresh(job)
-    return {"project_id": project_id, "job_id": job.id, "status": job.status}
+    return {
+        "project_id": project_id,
+        "source": serialize_source(source),
+        "job_id": job.id,
+        "status": job.status,
+    }
+
+
+@app.get("/api/v1/sources/{source_id}")
+def get_source(source_id: str, db: Session = Depends(get_db)):
+    source = db.get(Source, source_id)
+    if source is None:
+        raise HTTPException(status_code=404, detail="source_not_found")
+    return serialize_source(source)
 
 
 @app.get("/api/v1/jobs/{job_id}")
