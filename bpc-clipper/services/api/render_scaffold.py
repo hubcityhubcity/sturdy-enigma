@@ -44,6 +44,16 @@ def build_vtt(edit: EditTimeline) -> str:
     ])
 
 
+def is_vertical_format(export_format: str) -> bool:
+    return export_format in {"vertical_1080x1920", "tiktok", "youtube_shorts", "instagram_reels"}
+
+
+def video_filter_for_format(export_format: str) -> str | None:
+    if is_vertical_format(export_format):
+        return "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1"
+    return None
+
+
 def write_sidecar_files(export: ExportRecord, edit: EditTimeline, video_path: Path, render_status: str) -> dict:
     folder = export_dir(export.project_id, export.id)
     metadata_path = folder / "metadata.json"
@@ -63,6 +73,7 @@ def write_sidecar_files(export: ExportRecord, edit: EditTimeline, video_path: Pa
         "crop_mode": edit.crop_mode,
         "status": render_status,
         "video_path": str(video_path),
+        "target_aspect_ratio": "9:16" if is_vertical_format(export.format) else "source",
     }
 
     metadata_path.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
@@ -90,9 +101,11 @@ def create_placeholder_export_files(export: ExportRecord, edit: EditTimeline) ->
 
 
 def render_trimmed_mp4(export: ExportRecord, edit: EditTimeline, source: Source | None) -> dict:
-    """Render a basic trimmed MP4 from the original source media.
+    """Render a trimmed MP4 from source media.
 
-    This intentionally avoids captions, reframing, and effects. Those are later bricks.
+    Current supported outputs:
+    - source aspect ratio trim
+    - 1080x1920 vertical crop for Shorts/TikTok/Reels formats
     """
     if source is None or not source.storage_path:
         return create_placeholder_export_files(export, edit)
@@ -104,6 +117,7 @@ def render_trimmed_mp4(export: ExportRecord, edit: EditTimeline, source: Source 
     folder = export_dir(export.project_id, export.id)
     output_path = folder / "clip.mp4"
     duration = max(1.0, edit.end_seconds - edit.start_seconds)
+    vf = video_filter_for_format(export.format)
 
     command = [
         "ffmpeg",
@@ -111,11 +125,20 @@ def render_trimmed_mp4(export: ExportRecord, edit: EditTimeline, source: Source 
         "-ss", str(edit.start_seconds),
         "-i", str(input_path),
         "-t", str(duration),
+    ]
+
+    if vf:
+        command.extend(["-vf", vf])
+
+    command.extend([
         "-c:v", "libx264",
+        "-preset", "veryfast",
+        "-crf", "20",
         "-c:a", "aac",
+        "-b:a", "192k",
         "-movflags", "+faststart",
         str(output_path),
-    ]
+    ])
 
     try:
         subprocess.run(command, check=True, capture_output=True, text=True)
@@ -126,4 +149,5 @@ def render_trimmed_mp4(export: ExportRecord, edit: EditTimeline, source: Source 
         error_path.write_text(error.stderr or "FFmpeg render failed.", encoding="utf-8")
         return create_placeholder_export_files(export, edit)
 
-    return write_sidecar_files(export, edit, output_path, "ffmpeg_trim_complete")
+    status = "ffmpeg_vertical_9x16_complete" if vf else "ffmpeg_trim_complete"
+    return write_sidecar_files(export, edit, output_path, status)
