@@ -16,6 +16,8 @@ from models import CandidateClip, EditTimeline, ExportRecord, Job, Project, Sour
 from render_queue_routes import router as render_queue_router
 from render_scaffold import create_placeholder_export_files
 from render_service import render_export_with_best_source
+from scoring_engine import score_segment
+from scoring_routes import router as scoring_router
 from transcription_adapter import get_transcription_provider
 from transcription_routes import router as transcription_router
 
@@ -26,10 +28,11 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="BPC Clipper API", version="0.15.0", lifespan=lifespan)
+app = FastAPI(title="BPC Clipper API", version="0.16.0", lifespan=lifespan)
 app.include_router(export_download_router, prefix="/api/v1")
 app.include_router(transcription_router, prefix="/api/v1")
 app.include_router(render_queue_router, prefix="/api/v1")
+app.include_router(scoring_router, prefix="/api/v1")
 
 
 class ProjectCreate(BaseModel):
@@ -89,7 +92,7 @@ def serialize_transcript(transcript: Transcript) -> dict:
 
 
 def serialize_candidate(candidate: CandidateClip) -> dict:
-    return {"candidate_id": candidate.id, "project_id": candidate.project_id, "source_id": candidate.source_id, "start_seconds": candidate.start_seconds, "end_seconds": candidate.end_seconds, "title": candidate.title, "excerpt": candidate.excerpt, "score": candidate.score, "category": candidate.category, "explanation": candidate.explanation, "risk_flags": candidate.risk_flags or [], "status": candidate.status}
+    return {"candidate_id": candidate.id, "project_id": candidate.project_id, "source_id": candidate.source_id, "start_seconds": candidate.start_seconds, "end_seconds": candidate.end_seconds, "title": candidate.title, "excerpt": candidate.excerpt, "score": candidate.score, "category": candidate.category, "explanation": candidate.explanation, "score_breakdown": candidate.score_breakdown or {}, "risk_flags": candidate.risk_flags or [], "status": candidate.status}
 
 
 def serialize_edit_timeline(edit: EditTimeline) -> dict:
@@ -128,14 +131,17 @@ def create_transcript_for_source(db: Session, project_id: str, source: Source, p
     return transcript
 
 
-def segment_score(segment: TranscriptSegment) -> int:
-    text = segment.text.lower(); score = 60
-    if "let me ask" in text or "here is" in text: score += 12
-    if "business" in text or "ownership" in text or "retention" in text: score += 10
-    if "viral" in text or "truth" in text or "mistake" in text: score += 8
-    duration = segment.end_seconds - segment.start_seconds
-    if 20 <= duration <= 55: score += 8
-    return min(score, 95)
+def category_from_breakdown(breakdown: dict) -> str:
+    debate = breakdown.get("debate", {}).get("score", 0)
+    story = breakdown.get("story", {}).get("score", 0)
+    emotion = breakdown.get("emotion", {}).get("score", 0)
+    if debate >= 70:
+        return "debate_heat"
+    if emotion >= 70:
+        return "emotional_moment"
+    if story >= 70:
+        return "story_mode"
+    return "high_retention"
 
 
 @app.get("/api/v1/health")
@@ -233,8 +239,9 @@ def generate_candidates(project_id: str, db: Session = Depends(get_db)):
         transcript = create_transcript_for_source(db, project_id, source)
     candidates = []
     for segment in transcript.segments:
-        score = segment_score(segment); category = "debate_heat" if "ask" in segment.text.lower() or "mistake" in segment.text.lower() else "story_mode"
-        candidates.append(CandidateClip(id=str(uuid4()), project_id=project_id, source_id=transcript.source_id, start_seconds=segment.start_seconds, end_seconds=segment.end_seconds, title=segment.text[:70].rstrip() + "...", excerpt=segment.text, score=score, category=category, explanation=f"Transcript-based candidate with score {score}. Strong enough for Producer Mode review.", risk_flags=[]))
+        scored = score_segment(segment); breakdown = scored.as_dict(); score = breakdown["overall"]["score"]
+        category = category_from_breakdown(breakdown)
+        candidates.append(CandidateClip(id=str(uuid4()), project_id=project_id, source_id=transcript.source_id, start_seconds=segment.start_seconds, end_seconds=segment.end_seconds, title=segment.text[:70].rstrip() + "...", excerpt=segment.text, score=score, category=category, explanation=breakdown["overall"]["explanation"], score_breakdown=breakdown, risk_flags=[]))
     candidates = sorted(candidates, key=lambda item: item.score, reverse=True)[:10]
     db.add_all(candidates); db.commit()
     for candidate in candidates: db.refresh(candidate)
@@ -253,7 +260,7 @@ def create_edit_timeline(candidate_id: str, payload: EditTimelineCreate, db: Ses
     if candidate is None: raise HTTPException(status_code=404, detail="candidate_not_found")
     existing = db.query(EditTimeline).filter(EditTimeline.candidate_clip_id == candidate_id).first()
     if existing: return serialize_edit_timeline(existing)
-    edit = EditTimeline(id=str(uuid4()), project_id=candidate.project_id, candidate_clip_id=candidate.id, start_seconds=candidate.start_seconds, end_seconds=candidate.end_seconds, hook_text=payload.hook_text or candidate.title, caption_preset=payload.caption_preset, crop_mode=payload.crop_mode, status="draft", settings={"source": "candidate_approval", "source_id": candidate.source_id})
+    edit = EditTimeline(id=str(uuid4()), project_id=candidate.project_id, candidate_clip_id=candidate.id, start_seconds=candidate.start_seconds, end_seconds=candidate.end_seconds, hook_text=payload.hook_text or candidate.title, caption_preset=payload.caption_preset, crop_mode=payload.crop_mode, status="draft", settings={"source": "candidate_approval", "source_id": candidate.source_id, "score_breakdown": candidate.score_breakdown or {}})
     candidate.status = "approved"; db.add(edit); db.commit(); db.refresh(edit)
     return serialize_edit_timeline(edit)
 
