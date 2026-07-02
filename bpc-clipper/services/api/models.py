@@ -17,6 +17,7 @@ class Project(Base):
 
     sources = relationship("Source", back_populates="project", cascade="all, delete-orphan")
     jobs = relationship("Job", back_populates="project", cascade="all, delete-orphan")
+    transcripts = relationship("Transcript", back_populates="project", cascade="all, delete-orphan")
     candidates = relationship("CandidateClip", back_populates="project", cascade="all, delete-orphan")
 
 
@@ -43,6 +44,7 @@ class Source(Base):
 
     project = relationship("Project", back_populates="sources")
     jobs = relationship("Job", back_populates="source")
+    transcripts = relationship("Transcript", back_populates="source", cascade="all, delete-orphan")
 
 
 class Job(Base):
@@ -62,6 +64,51 @@ class Job(Base):
 
     project = relationship("Project", back_populates="jobs")
     source = relationship("Source", back_populates="jobs")
+
+
+class Transcript(Base):
+    __tablename__ = "transcripts"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), nullable=False)
+    source_id: Mapped[str] = mapped_column(ForeignKey("sources.id"), nullable=False)
+    language: Mapped[str] = mapped_column(String(20), default="en")
+    provider: Mapped[str] = mapped_column(String(80), default="mock")
+    confidence: Mapped[float] = mapped_column(Float, default=1.0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    project = relationship("Project", back_populates="transcripts")
+    source = relationship("Source", back_populates="transcripts")
+    segments = relationship("TranscriptSegment", back_populates="transcript", cascade="all, delete-orphan")
+
+
+class TranscriptSegment(Base):
+    __tablename__ = "transcript_segments"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    transcript_id: Mapped[str] = mapped_column(ForeignKey("transcripts.id"), nullable=False)
+    speaker_label: Mapped[str] = mapped_column(String(80), default="Speaker 1")
+    start_seconds: Mapped[float] = mapped_column(Float, nullable=False)
+    end_seconds: Mapped[float] = mapped_column(Float, nullable=False)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    confidence: Mapped[float] = mapped_column(Float, default=1.0)
+
+    transcript = relationship("Transcript", back_populates="segments")
+    words = relationship("TranscriptWord", back_populates="segment", cascade="all, delete-orphan")
+
+
+class TranscriptWord(Base):
+    __tablename__ = "transcript_words"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    segment_id: Mapped[str] = mapped_column(ForeignKey("transcript_segments.id"), nullable=False)
+    start_seconds: Mapped[float] = mapped_column(Float, nullable=False)
+    end_seconds: Mapped[float] = mapped_column(Float, nullable=False)
+    text: Mapped[str] = mapped_column(String(120), nullable=False)
+    confidence: Mapped[float] = mapped_column(Float, default=1.0)
+    corrected_text: Mapped[str | None] = mapped_column(String(120), nullable=True)
+
+    segment = relationship("TranscriptSegment", back_populates="words")
 
 
 class CandidateClip(Base):
