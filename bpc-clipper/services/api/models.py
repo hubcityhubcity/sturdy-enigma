@@ -127,6 +127,7 @@ class CandidateClip(Base):
     score: Mapped[int] = mapped_column(Integer, nullable=False)
     category: Mapped[str] = mapped_column(String(80), nullable=False)
     explanation: Mapped[str] = mapped_column(Text, nullable=False)
+    score_breakdown: Mapped[dict] = mapped_column(JSON, default=dict)
     risk_flags: Mapped[list] = mapped_column(JSON, default=list)
     status: Mapped[str] = mapped_column(String(50), default="candidate")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
