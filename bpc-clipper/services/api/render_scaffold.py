@@ -1,8 +1,9 @@
 import json
+import subprocess
 from pathlib import Path
 
 from local_storage import STORAGE_ROOT
-from models import EditTimeline, ExportRecord
+from models import EditTimeline, ExportRecord, Source
 
 
 def format_timestamp(seconds: float, separator: str = ',') -> str:
@@ -43,13 +44,11 @@ def build_vtt(edit: EditTimeline) -> str:
     ])
 
 
-def create_placeholder_export_files(export: ExportRecord, edit: EditTimeline) -> dict:
+def write_sidecar_files(export: ExportRecord, edit: EditTimeline, video_path: Path, render_status: str) -> dict:
     folder = export_dir(export.project_id, export.id)
-
     metadata_path = folder / "metadata.json"
     srt_path = folder / "captions.srt"
     vtt_path = folder / "captions.vtt"
-    video_path = folder / "video-placeholder.txt"
 
     metadata = {
         "export_id": export.id,
@@ -62,20 +61,15 @@ def create_placeholder_export_files(export: ExportRecord, edit: EditTimeline) ->
         "hook_text": edit.hook_text,
         "caption_preset": edit.caption_preset,
         "crop_mode": edit.crop_mode,
-        "status": "placeholder_render_complete",
+        "status": render_status,
+        "video_path": str(video_path),
     }
 
     metadata_path.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
-
     if export.include_srt:
         srt_path.write_text(build_srt(edit), encoding="utf-8")
     if export.include_vtt:
         vtt_path.write_text(build_vtt(edit), encoding="utf-8")
-
-    video_path.write_text(
-        "Placeholder only. Real FFmpeg rendering will replace this with an MP4.",
-        encoding="utf-8",
-    )
 
     return {
         "metadata_path": str(metadata_path),
@@ -83,3 +77,53 @@ def create_placeholder_export_files(export: ExportRecord, edit: EditTimeline) ->
         "vtt_path": str(vtt_path) if export.include_vtt else None,
         "video_path": str(video_path),
     }
+
+
+def create_placeholder_export_files(export: ExportRecord, edit: EditTimeline) -> dict:
+    folder = export_dir(export.project_id, export.id)
+    video_path = folder / "video-placeholder.txt"
+    video_path.write_text(
+        "Placeholder only. Real FFmpeg rendering will replace this with an MP4.",
+        encoding="utf-8",
+    )
+    return write_sidecar_files(export, edit, video_path, "placeholder_render_complete")
+
+
+def render_trimmed_mp4(export: ExportRecord, edit: EditTimeline, source: Source | None) -> dict:
+    """Render a basic trimmed MP4 from the original source media.
+
+    This intentionally avoids captions, reframing, and effects. Those are later bricks.
+    """
+    if source is None or not source.storage_path:
+        return create_placeholder_export_files(export, edit)
+
+    input_path = Path(source.storage_path)
+    if not input_path.exists():
+        return create_placeholder_export_files(export, edit)
+
+    folder = export_dir(export.project_id, export.id)
+    output_path = folder / "clip.mp4"
+    duration = max(1.0, edit.end_seconds - edit.start_seconds)
+
+    command = [
+        "ffmpeg",
+        "-y",
+        "-ss", str(edit.start_seconds),
+        "-i", str(input_path),
+        "-t", str(duration),
+        "-c:v", "libx264",
+        "-c:a", "aac",
+        "-movflags", "+faststart",
+        str(output_path),
+    ]
+
+    try:
+        subprocess.run(command, check=True, capture_output=True, text=True)
+    except FileNotFoundError:
+        return create_placeholder_export_files(export, edit)
+    except subprocess.CalledProcessError as error:
+        error_path = folder / "render-error.txt"
+        error_path.write_text(error.stderr or "FFmpeg render failed.", encoding="utf-8")
+        return create_placeholder_export_files(export, edit)
+
+    return write_sidecar_files(export, edit, output_path, "ffmpeg_trim_complete")
