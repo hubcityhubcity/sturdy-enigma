@@ -23,7 +23,7 @@ const fallbackCandidates: Candidate[] = [{
 
 const scoreOrder: Array<keyof ScoreBreakdown> = ['hook', 'curiosity', 'emotion', 'debate', 'story', 'retention'];
 const scoreLabels: Record<string, string> = { hook: 'Hook', curiosity: 'Curiosity', emotion: 'Emotion', debate: 'Debate', story: 'Story', retention: 'Retention', overall: 'Overall' };
-type CandidateWorkflowState = { status: string; exportRecord?: ExportRecord; renderJob?: RenderJob; error?: string };
+type CandidateWorkflowState = { status: string; exportRecord?: ExportRecord; renderJob?: RenderJob; error?: string; isBusy?: boolean };
 
 function formatTime(seconds: number) { return `${Math.floor(seconds / 60).toString().padStart(2, '0')}:${Math.floor(seconds % 60).toString().padStart(2, '0')}`; }
 function formatCategory(category: string) { return category.replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase()); }
@@ -82,7 +82,7 @@ export function ProducerModeClient({ projectId }: { projectId?: string }) {
         setCandidates(generated.candidates); setStatus('Generated fresh transcript candidates.');
       } catch (caught) { setError(caught instanceof Error ? caught.message : 'Unable to load project.'); setStatus('Showing demo candidates because the API did not respond.'); }
     }
-    setActiveEvidenceSourceId(null); setSources([]); loadProject();
+    setActiveEvidenceSourceId(null); setSources([]); setWorkflowByCandidate({}); loadProject();
   }, [projectId]);
 
   function updateWorkflow(candidateId: string, next: CandidateWorkflowState) { setWorkflowByCandidate((current) => ({ ...current, [candidateId]: next })); }
@@ -146,22 +146,45 @@ export function ProducerModeClient({ projectId }: { projectId?: string }) {
 
   async function pollRenderJob(candidateId: string, job: RenderJob, exportId: string) {
     let currentJob = job;
-    for (let attempt = 0; attempt < 60; attempt += 1) { currentJob = await getRenderJob(job.job_id); const refreshedExport = await getExport(exportId); updateWorkflow(candidateId, { status: `Queued render: ${currentJob.status} (${currentJob.progress}%)`, exportRecord: refreshedExport, renderJob: currentJob }); if (currentJob.status === 'complete' || currentJob.status === 'failed') return { job: currentJob, exportRecord: refreshedExport }; await sleep(2000); }
+    for (let attempt = 0; attempt < 60; attempt += 1) {
+      currentJob = await getRenderJob(job.job_id);
+      const refreshedExport = await getExport(exportId);
+      updateWorkflow(candidateId, { status: `Queued render: ${currentJob.status} (${currentJob.progress}%)`, exportRecord: refreshedExport, renderJob: currentJob, isBusy: currentJob.status !== 'complete' && currentJob.status !== 'failed' });
+      if (currentJob.status === 'complete' || currentJob.status === 'failed') return { job: currentJob, exportRecord: refreshedExport };
+      await sleep(2000);
+    }
     throw new Error('Render job polling timed out. Worker may not be running.');
   }
 
   async function approveAndQueueRender(candidate: Candidate) {
     if (!projectId || candidate.project_id === 'demo') return updateWorkflow(candidate.candidate_id, { status: 'Create a real project first to approve and render.' });
-    updateWorkflow(candidate.candidate_id, { status: 'Approving candidate...' });
-    try { const edit = await createEditTimeline(candidate.candidate_id, { hook_text: candidate.excerpt, caption_preset: candidate.category === 'debate_heat' ? 'bpc_debate_heat' : 'bpc_clean_editorial', crop_mode: 'speaker_focus' }); const exportRecord = await createExport(edit.edit_id, { format: 'vertical_1080x1920', include_burned_captions: true, include_srt: true, include_vtt: true, include_metadata: true }); updateWorkflow(candidate.candidate_id, { status: 'Queueing render job...', exportRecord }); const renderJob = await queueRenderExport(exportRecord.export_id); const result = await pollRenderJob(candidate.candidate_id, renderJob, exportRecord.export_id); updateWorkflow(candidate.candidate_id, { status: result.job.status === 'complete' ? 'Render complete.' : 'Render failed.', exportRecord: result.exportRecord, renderJob: result.job, error: result.job.error || undefined }); }
-    catch (caught) { updateWorkflow(candidate.candidate_id, { status: 'Queued render workflow failed.', error: caught instanceof Error ? caught.message : 'Unable to approve and queue render candidate.' }); }
+    if (workflowByCandidate[candidate.candidate_id]?.isBusy) return;
+    updateWorkflow(candidate.candidate_id, { status: 'Approving candidate...', isBusy: true });
+    try {
+      const edit = await createEditTimeline(candidate.candidate_id, { hook_text: candidate.excerpt, caption_preset: candidate.category === 'debate_heat' ? 'bpc_debate_heat' : 'bpc_clean_editorial', crop_mode: 'speaker_focus' });
+      const exportRecord = await createExport(edit.edit_id, { format: 'vertical_1080x1920', include_burned_captions: true, include_srt: true, include_vtt: true, include_metadata: true });
+      updateWorkflow(candidate.candidate_id, { status: 'Queueing render job...', exportRecord, isBusy: true });
+      const renderJob = await queueRenderExport(exportRecord.export_id);
+      const result = await pollRenderJob(candidate.candidate_id, renderJob, exportRecord.export_id);
+      updateWorkflow(candidate.candidate_id, { status: result.job.status === 'complete' ? 'Render complete.' : 'Render failed.', exportRecord: result.exportRecord, renderJob: result.job, error: result.job.error || undefined, isBusy: false });
+    } catch (caught) {
+      updateWorkflow(candidate.candidate_id, { status: 'Queued render workflow failed.', error: caught instanceof Error ? caught.message : 'Unable to approve and queue render candidate.', isBusy: false });
+    }
   }
 
   async function approveAndRenderNow(candidate: Candidate) {
     if (!projectId || candidate.project_id === 'demo') return updateWorkflow(candidate.candidate_id, { status: 'Create a real project first to approve and render.' });
-    updateWorkflow(candidate.candidate_id, { status: 'Approving candidate for immediate render...' });
-    try { const edit = await createEditTimeline(candidate.candidate_id, { hook_text: candidate.excerpt, caption_preset: candidate.category === 'debate_heat' ? 'bpc_debate_heat' : 'bpc_clean_editorial', crop_mode: 'speaker_focus' }); const exportRecord = await createExport(edit.edit_id, { format: 'vertical_1080x1920', include_burned_captions: true, include_srt: true, include_vtt: true, include_metadata: true }); updateWorkflow(candidate.candidate_id, { status: 'Rendering immediately...', exportRecord }); const renderedExport = await renderExport(exportRecord.export_id); updateWorkflow(candidate.candidate_id, { status: `Immediate render finished: ${renderedExport.status}`, exportRecord: renderedExport }); }
-    catch (caught) { updateWorkflow(candidate.candidate_id, { status: 'Immediate render failed.', error: caught instanceof Error ? caught.message : 'Unable to render immediately.' }); }
+    if (workflowByCandidate[candidate.candidate_id]?.isBusy) return;
+    updateWorkflow(candidate.candidate_id, { status: 'Approving candidate for immediate render...', isBusy: true });
+    try {
+      const edit = await createEditTimeline(candidate.candidate_id, { hook_text: candidate.excerpt, caption_preset: candidate.category === 'debate_heat' ? 'bpc_debate_heat' : 'bpc_clean_editorial', crop_mode: 'speaker_focus' });
+      const exportRecord = await createExport(edit.edit_id, { format: 'vertical_1080x1920', include_burned_captions: true, include_srt: true, include_vtt: true, include_metadata: true });
+      updateWorkflow(candidate.candidate_id, { status: 'Rendering immediately...', exportRecord, isBusy: true });
+      const renderedExport = await renderExport(exportRecord.export_id);
+      updateWorkflow(candidate.candidate_id, { status: `Immediate render finished: ${renderedExport.status}`, exportRecord: renderedExport, error: renderedExport.error || undefined, isBusy: false });
+    } catch (caught) {
+      updateWorkflow(candidate.candidate_id, { status: 'Immediate render failed.', error: caught instanceof Error ? caught.message : 'Unable to render immediately.', isBusy: false });
+    }
   }
 
   return <>
@@ -174,7 +197,11 @@ export function ProducerModeClient({ projectId }: { projectId?: string }) {
     </section>
     <GameSenseEvidencePanel projectId={projectId} sourceId={activeEvidenceSourceId} refreshToken={evidenceRefreshToken} />
     <section style={{ display: 'grid', gap: 18, marginTop: 24 }}>
-      {visibleCandidates.length ? visibleCandidates.map((candidate) => { const workflow = workflowByCandidate[candidate.candidate_id]; return <article className="card candidate" key={candidate.candidate_id}><div><div className="score">{candidate.score}</div><div className="badge">{formatCategory(candidate.category)}</div></div><div><h2>{candidate.title}</h2><p><strong>Source time:</strong> {formatTime(candidate.start_seconds)} - {formatTime(candidate.end_seconds)}</p><p>{candidate.excerpt}</p><p><strong>Why it ranked:</strong> {candidate.explanation}</p><ScoreBreakdownPanel breakdown={candidate.score_breakdown} />{candidate.risk_flags.length > 0 && <p><strong>Risk flags:</strong> {candidate.risk_flags.join(', ')}</p>}{workflow && <div className="card" style={{ marginTop: 12 }}><p><strong>Workflow:</strong> {workflow.status}</p>{workflow.renderJob && <p><strong>Render Job:</strong> {workflow.renderJob.status} / {workflow.renderJob.progress}%</p>}{workflow.exportRecord && <><p><strong>Export Status:</strong> {workflow.exportRecord.status}</p><ExportLinks exportRecord={workflow.exportRecord} /></>}{workflow.error && <p style={{ color: '#ff8a8a' }}><strong>Error:</strong> {workflow.error}</p>}</div>}</div><div className="button-row"><button className="button" type="button" onClick={() => approveAndQueueRender(candidate)}>Approve + Queue Render</button><button className="button secondary" type="button" onClick={() => approveAndRenderNow(candidate)}>Render Now</button></div></article>; }) : <article className="card"><h2>No clips for this source yet</h2><p>Choose Analyze Stream + Find Clips to create source-specific GameSense candidates, or select another source.</p></article>}
+      {visibleCandidates.length ? visibleCandidates.map((candidate) => {
+        const workflow = workflowByCandidate[candidate.candidate_id];
+        const isCandidateBusy = Boolean(workflow?.isBusy);
+        return <article className="card candidate" key={candidate.candidate_id}><div><div className="score">{candidate.score}</div><div className="badge">{formatCategory(candidate.category)}</div></div><div><h2>{candidate.title}</h2><p><strong>Source time:</strong> {formatTime(candidate.start_seconds)} - {formatTime(candidate.end_seconds)}</p><p>{candidate.excerpt}</p><p><strong>Why it ranked:</strong> {candidate.explanation}</p><ScoreBreakdownPanel breakdown={candidate.score_breakdown} />{candidate.risk_flags.length > 0 && <p><strong>Risk flags:</strong> {candidate.risk_flags.join(', ')}</p>}{workflow && <div className="card" style={{ marginTop: 12 }}><p><strong>Workflow:</strong> {workflow.status}</p>{workflow.renderJob && <p><strong>Render Job:</strong> {workflow.renderJob.status} / {workflow.renderJob.progress}%</p>}{workflow.exportRecord && <><p><strong>Export Status:</strong> {workflow.exportRecord.status}</p><ExportLinks exportRecord={workflow.exportRecord} /></>}{workflow.error && <p style={{ color: '#ff8a8a' }}><strong>Error:</strong> {workflow.error}</p>}</div>}</div><div className="button-row"><button className="button" type="button" onClick={() => approveAndQueueRender(candidate)} disabled={isCandidateBusy}>{isCandidateBusy ? 'Render Workflow Running...' : 'Approve + Queue Render'}</button><button className="button secondary" type="button" onClick={() => approveAndRenderNow(candidate)} disabled={isCandidateBusy}>{isCandidateBusy ? 'Render Workflow Running...' : 'Render Now'}</button></div></article>;
+      }) : <article className="card"><h2>No clips for this source yet</h2><p>Choose Analyze Stream + Find Clips to create source-specific GameSense candidates, or select another source.</p></article>}
     </section>
   </>;
 }
