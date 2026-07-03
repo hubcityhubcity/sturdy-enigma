@@ -1,42 +1,44 @@
 import unittest
 
-from gamesense_chat import ChatMessage, detect_chat_spikes, is_hype_message
+from gamesense_chat import ChatMessage, detect_chat_spikes, hype_terms_for_message, is_hype_message
 
 
 class GameSenseChatTests(unittest.TestCase):
-    def test_detects_dense_hype_burst(self):
+    def test_detects_hype_language(self):
+        self.assertTrue(is_hype_message("NO WAY clip that W W W"))
+        terms = hype_terms_for_message("Somebody clip that holy shit W")
+        self.assertIn("somebody_clip", terms)
+        self.assertIn("clip_that", terms)
+        self.assertIn("w", terms)
+
+    def test_detects_burst_of_clipworthy_chat(self):
         messages = [
-            ChatMessage(0.0, "normal"),
-            ChatMessage(10.0, "hello"),
-            ChatMessage(20.0, "watch this"),
-            ChatMessage(30.0, "W"),
-            ChatMessage(30.4, "OMG"),
-            ChatMessage(30.8, "CLIP THAT"),
-            ChatMessage(31.2, "NO WAY"),
-            ChatMessage(31.6, "W W W"),
-            ChatMessage(32.0, "GOAT"),
-            ChatMessage(32.4, "INSANE"),
+            ChatMessage(0.0, "normal chat"),
+            ChatMessage(10.0, "NO WAY"),
+            ChatMessage(10.4, "W"),
+            ChatMessage(10.8, "clip that"),
+            ChatMessage(11.1, "holy shit"),
+            ChatMessage(11.4, "OMG"),
+            ChatMessage(11.7, "W W W"),
+            ChatMessage(12.0, "that was insane"),
+            ChatMessage(12.2, "someone clip"),
+            ChatMessage(20.0, "back to normal"),
         ]
 
-        spikes = detect_chat_spikes(messages)
+        spikes = detect_chat_spikes(messages, min_messages=5)
 
         self.assertEqual(len(spikes), 1)
         spike = spikes[0]
-        self.assertEqual(spike.start_seconds, 30.0)
-        self.assertGreaterEqual(spike.message_count, 7)
-        self.assertGreaterEqual(spike.hype_message_count, 6)
+        self.assertEqual(spike.start_seconds, 10.0)
         self.assertGreaterEqual(spike.intensity, 80)
+        self.assertGreaterEqual(spike.hype_message_count, 6)
+        self.assertIn("clip_that", spike.top_terms)
+        self.assertGreaterEqual(len(spike.sample_messages), 3)
         self.assertGreater(spike.messages_per_second, spike.baseline_messages_per_second)
 
-    def test_steady_chat_does_not_become_a_spike(self):
-        messages = [ChatMessage(index * 2.0, "normal chat") for index in range(30)]
+    def test_steady_low_hype_chat_does_not_create_spike(self):
+        messages = [ChatMessage(index * 5.0, f"regular message {index}") for index in range(30)]
         self.assertEqual(detect_chat_spikes(messages), [])
-
-    def test_hype_terms_cover_common_gaming_reactions(self):
-        self.assertTrue(is_hype_message("W"))
-        self.assertTrue(is_hype_message("clip that right now"))
-        self.assertTrue(is_hype_message("NO WAY OMG"))
-        self.assertFalse(is_hype_message("I think that was a smart rotation"))
 
 
 if __name__ == "__main__":
