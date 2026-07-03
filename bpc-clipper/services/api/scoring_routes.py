@@ -4,12 +4,14 @@ from sqlalchemy.orm import Session
 from database import get_db
 from gamesense_chat_routes import router as gamesense_chat_router
 from gamesense_routes import router as gamesense_router
+from gamesense_visual_routes import router as gamesense_visual_router
 from models import CandidateClip, Transcript, TranscriptSegment
 from scoring_engine import score_segment
 
 router = APIRouter()
 router.include_router(gamesense_router)
 router.include_router(gamesense_chat_router)
+router.include_router(gamesense_visual_router)
 
 
 def serialize_candidate(candidate: CandidateClip) -> dict:
