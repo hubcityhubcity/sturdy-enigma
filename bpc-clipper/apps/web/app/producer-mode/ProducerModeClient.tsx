@@ -11,6 +11,7 @@ import {
   createEditTimeline,
   createExport,
   detectGameSenseAudio,
+  detectGameSenseVisual,
   generateCandidates,
   generateGameSenseCandidates,
   getExport,
@@ -72,6 +73,7 @@ export function ProducerModeClient({ projectId }: { projectId?: string }) {
   const [isRescoring, setIsRescoring] = useState(false);
   const [isGeneratingGameSense, setIsGeneratingGameSense] = useState(false);
   const [isScanningAudio, setIsScanningAudio] = useState(false);
+  const [isScanningVisual, setIsScanningVisual] = useState(false);
 
   const sortedCandidates = useMemo(() => [...candidates].sort((a, b) => b.score - a.score), [candidates]);
 
@@ -90,6 +92,14 @@ export function ProducerModeClient({ projectId }: { projectId?: string }) {
 
   function updateWorkflow(candidateId: string, next: CandidateWorkflowState) { setWorkflowByCandidate((current) => ({ ...current, [candidateId]: next })); }
 
+  async function withNewestSource(action: (sourceId: string) => Promise<void>, missingMessage: string) {
+    if (!projectId) { setStatus('Create a real gaming project first.'); return; }
+    const sources = await listSources(projectId);
+    const source = sources.sources[sources.sources.length - 1];
+    if (!source) throw new Error(missingMessage);
+    await action(source.source_id);
+  }
+
   async function rescoreProject() {
     if (!projectId) return setStatus('Create a real project first to rescore candidates.');
     setIsRescoring(true); setError(''); setStatus('Rescoring candidates with Titan Brain...');
@@ -102,28 +112,40 @@ export function ProducerModeClient({ projectId }: { projectId?: string }) {
     if (!projectId) return setStatus('Create a real gaming project first to scan audio.');
     setIsScanningAudio(true); setError(''); setStatus('Titan GameSense is scanning stream audio for reaction spikes...');
     try {
-      const sources = await listSources(projectId);
-      const source = sources.sources[sources.sources.length - 1];
-      if (!source) throw new Error('No source exists for this project yet.');
-      const result = await detectGameSenseAudio(source.source_id, true);
-      setStatus(result.created_count ? `Titan found ${result.created_count} audio reaction spike(s). Generate GameSense clips to fuse them into moments.` : 'Titan found no strong audio spikes in this source. Add chat or gameplay evidence for more context.');
+      await withNewestSource(async (sourceId) => {
+        const result = await detectGameSenseAudio(sourceId, true);
+        setStatus(result.created_count ? `Titan found ${result.created_count} audio reaction spike(s). Generate GameSense clips to fuse them into moments.` : 'Titan found no strong audio spikes in this source. Add visual, chat, or gameplay evidence for more context.');
+      }, 'No source exists for this project yet.');
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : 'Unable to scan stream audio.';
-      setError(message);
-      setStatus(message.includes('source_media_not_available') ? 'Audio scanning requires an uploaded or successfully imported local media source.' : 'GameSense audio scan failed.');
+      setError(message); setStatus(message.includes('source_media_not_available') ? 'Audio scanning requires an uploaded or successfully imported local media source.' : 'GameSense audio scan failed.');
     } finally { setIsScanningAudio(false); }
+  }
+
+  async function scanVisualForAction() {
+    if (!projectId) return setStatus('Create a real gaming project first to scan visuals.');
+    setIsScanningVisual(true); setError(''); setStatus('Titan GameSense is scanning for sharp visual action changes...');
+    try {
+      await withNewestSource(async (sourceId) => {
+        const result = await detectGameSenseVisual(sourceId, true);
+        setStatus(result.created_count ? `Titan found ${result.created_count} visual scene-change signal(s). Generate GameSense clips to fuse them with audio, chat, or gameplay evidence.` : 'Titan found no sharp visual changes at the current threshold. Audio, chat, and gameplay evidence can still produce clips.');
+      }, 'No source exists for this project yet.');
+    } catch (caught) {
+      const message = caught instanceof Error ? caught.message : 'Unable to scan stream visuals.';
+      setError(message); setStatus(message.includes('source_media_not_available') ? 'Visual scanning requires an uploaded or successfully imported local media source.' : 'GameSense visual scan failed.');
+    } finally { setIsScanningVisual(false); }
   }
 
   async function generateGameSense() {
     if (!projectId) return setStatus('Create a real gaming project first to generate GameSense clips.');
-    setIsGeneratingGameSense(true); setError(''); setStatus('Titan GameSense is fusing gameplay, audio, chat, and reaction evidence...');
+    setIsGeneratingGameSense(true); setError(''); setStatus('Titan GameSense is fusing gameplay, audio, visual, chat, and reaction evidence...');
     try {
       const result = await generateGameSenseCandidates(projectId, undefined, true);
       if (!result.candidates.length) throw new Error('No strong gaming moments met the GameSense threshold.');
       setCandidates(result.candidates); setStatus(`Titan GameSense generated ${result.generated_count} gaming candidate(s).`);
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : 'Unable to generate GameSense clips.';
-      setError(message); setStatus(message.includes('gamesense_events_not_found') ? 'No GameSense evidence exists yet. Scan audio, import chat, or add gameplay events first.' : 'GameSense generation failed.');
+      setError(message); setStatus(message.includes('gamesense_events_not_found') ? 'No GameSense evidence exists yet. Scan audio/visuals, import chat, or add gameplay events first.' : 'GameSense generation failed.');
     } finally { setIsGeneratingGameSense(false); }
   }
 
@@ -170,9 +192,10 @@ export function ProducerModeClient({ projectId }: { projectId?: string }) {
       <div className="button-row" style={{ marginTop: 12 }}>
         <button className="button secondary" type="button" onClick={rescoreProject} disabled={isRescoring || !projectId}>{isRescoring ? 'Rescoring...' : 'Rescore with Titan Brain'}</button>
         <button className="button secondary" type="button" onClick={scanAudioForReactions} disabled={isScanningAudio || !projectId}>{isScanningAudio ? 'Scanning Stream Audio...' : 'Scan Audio for Reactions'}</button>
+        <button className="button secondary" type="button" onClick={scanVisualForAction} disabled={isScanningVisual || !projectId}>{isScanningVisual ? 'Scanning Stream Visuals...' : 'Scan Visual Action'}</button>
         <button className="button" type="button" onClick={generateGameSense} disabled={isGeneratingGameSense || !projectId}>{isGeneratingGameSense ? 'Finding Gaming Moments...' : 'Generate GameSense Clips'}</button>
       </div>
-      <p style={{ marginTop: 10, opacity: 0.8 }}>Gaming workflow: scan local stream audio for high-energy reactions, add chat/gameplay evidence when available, then generate GameSense clips.</p>
+      <p style={{ marginTop: 10, opacity: 0.8 }}>Gaming workflow: scan local stream audio and visuals, add chat/gameplay evidence when available, then generate GameSense clips. Visual changes are signals—not automatic kill labels.</p>
     </section>
     <section style={{ display: 'grid', gap: 18, marginTop: 24 }}>
       {sortedCandidates.map((candidate) => {
