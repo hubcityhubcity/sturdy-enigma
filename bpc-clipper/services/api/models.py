@@ -19,6 +19,7 @@ class Project(Base):
     jobs = relationship("Job", back_populates="project", cascade="all, delete-orphan")
     transcripts = relationship("Transcript", back_populates="project", cascade="all, delete-orphan")
     candidates = relationship("CandidateClip", back_populates="project", cascade="all, delete-orphan")
+    game_events = relationship("GameSenseEvent", back_populates="project", cascade="all, delete-orphan")
     edit_timelines = relationship("EditTimeline", back_populates="project", cascade="all, delete-orphan")
     exports = relationship("ExportRecord", back_populates="project", cascade="all, delete-orphan")
 
@@ -48,6 +49,7 @@ class Source(Base):
     jobs = relationship("Job", back_populates="source")
     transcripts = relationship("Transcript", back_populates="source", cascade="all, delete-orphan")
     candidates = relationship("CandidateClip", back_populates="source", cascade="all, delete-orphan")
+    game_events = relationship("GameSenseEvent", back_populates="source", cascade="all, delete-orphan")
 
 
 class Job(Base):
@@ -112,6 +114,26 @@ class TranscriptWord(Base):
     corrected_text: Mapped[str | None] = mapped_column(String(120), nullable=True)
 
     segment = relationship("TranscriptSegment", back_populates="words")
+
+
+class GameSenseEvent(Base):
+    """One piece of time-coded evidence from gameplay, audio, chat, or a facecam."""
+    __tablename__ = "gamesense_events"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), nullable=False)
+    source_id: Mapped[str | None] = mapped_column(ForeignKey("sources.id"), nullable=True)
+    event_type: Mapped[str] = mapped_column(String(80), nullable=False)
+    modality: Mapped[str] = mapped_column(String(50), nullable=False)
+    start_seconds: Mapped[float] = mapped_column(Float, nullable=False)
+    end_seconds: Mapped[float] = mapped_column(Float, nullable=False)
+    confidence: Mapped[float] = mapped_column(Float, default=1.0)
+    intensity: Mapped[int] = mapped_column(Integer, default=50)
+    evidence: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    project = relationship("Project", back_populates="game_events")
+    source = relationship("Source", back_populates="game_events")
 
 
 class CandidateClip(Base):
