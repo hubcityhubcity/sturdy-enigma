@@ -8,6 +8,21 @@ from local_storage import STORAGE_ROOT
 from models import EditTimeline, ExportRecord, Source
 
 
+CROP_MODE_ALIASES = {
+    "speaker_focus": "center_focus",
+    "center": "center_focus",
+    "center_focus": "center_focus",
+    "left": "left_focus",
+    "left_focus": "left_focus",
+    "right": "right_focus",
+    "right_focus": "right_focus",
+    "top": "top_focus",
+    "top_focus": "top_focus",
+    "bottom": "bottom_focus",
+    "bottom_focus": "bottom_focus",
+}
+
+
 def format_timestamp(seconds: float, separator: str = ',') -> str:
     total_ms = int(seconds * 1000)
     hours = total_ms // 3_600_000
@@ -77,12 +92,34 @@ def ffmpeg_subtitle_path(path: Path) -> str:
     return str(path).replace("\\", "/").replace(":", "\\:")
 
 
+def resolve_crop_mode(crop_mode: str | None) -> str:
+    return CROP_MODE_ALIASES.get((crop_mode or "").strip().lower(), "center_focus")
+
+
+def crop_filter_for_mode(crop_mode: str | None) -> str:
+    """Return a 9:16 FFmpeg crop expression after scale-to-fill.
+
+    These are deterministic framing presets. Future face tracking can write a dynamic
+    crop path into the same render pipeline without changing export contracts.
+    """
+    mode = resolve_crop_mode(crop_mode)
+    if mode == "left_focus":
+        return "crop=1080:1920:0:(ih-oh)/2"
+    if mode == "right_focus":
+        return "crop=1080:1920:iw-ow:(ih-oh)/2"
+    if mode == "top_focus":
+        return "crop=1080:1920:(iw-ow)/2:0"
+    if mode == "bottom_focus":
+        return "crop=1080:1920:(iw-ow)/2:ih-oh"
+    return "crop=1080:1920:(iw-ow)/2:(ih-oh)/2"
+
+
 def build_video_filter(export: ExportRecord, edit: EditTimeline, srt_path: Path | None) -> str | None:
     filters: list[str] = []
     if is_vertical_format(export.format):
         filters.extend([
             "scale=1080:1920:force_original_aspect_ratio=increase",
-            "crop=1080:1920",
+            crop_filter_for_mode(edit.crop_mode),
             "setsar=1",
         ])
     if export.include_burned_captions and srt_path is not None:
@@ -118,6 +155,7 @@ def write_sidecar_files(
         "caption_timing_mode": caption_timing_mode,
         "caption_word_count": len(caption_words or []),
         "crop_mode": edit.crop_mode,
+        "resolved_crop_mode": resolve_crop_mode(edit.crop_mode),
         "status": render_status,
         "video_path": str(video_path),
         "target_aspect_ratio": "9:16" if is_vertical_format(export.format) else "source",
