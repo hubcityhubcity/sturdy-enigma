@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from accounted_workflow_routes import router as accounted_workflow_router
 from database import get_db
 from gamesense_analysis_routes import router as gamesense_analysis_router
 from gamesense_chat_routes import router as gamesense_chat_router
@@ -22,6 +23,7 @@ router.include_router(gamesense_summary_router)
 router.include_router(source_candidate_router)
 router.include_router(publishing_router)
 router.include_router(workspace_router)
+router.include_router(accounted_workflow_router)
 
 
 def serialize_candidate(candidate: CandidateClip) -> dict:
