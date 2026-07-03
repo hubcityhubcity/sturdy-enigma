@@ -83,14 +83,27 @@ export function SourceCandidateBrowser({ projectId }: { projectId?: string }) {
     return () => { cancelled = true; };
   }, [projectId, sourceId, refreshToken]);
 
+  const ranked = useMemo(() => [...candidates].sort((a, b) => b.score - a.score), [candidates]);
+  const strongestChat = useMemo(() => {
+    if (!summary) return null;
+    return summary.strongest_by_modality?.chat || summary.strongest_events.find((event) => event.modality === 'chat') || null;
+  }, [summary]);
+  const hasRankableEvidence = Boolean(summary && summary.total_events > 0);
+  const chatTerms = strongestChat ? evidenceStrings(strongestChat, 'top_terms') : [];
+  const chatSamples = strongestChat ? evidenceStrings(strongestChat, 'sample_messages') : [];
+  const chatHypeScore = strongestChat ? evidenceNumber(strongestChat, 'hype_score') : null;
+
   async function rerankSourceEvidence() {
     if (!projectId || !sourceId) return;
+    if (!hasRankableEvidence) {
+      setStatus('No GameSense evidence exists for this source yet. Analyze the stream, import chat, or add gameplay evidence first.');
+      return;
+    }
     setIsReranking(true);
     setStatus('Titan GameSense is ranking this source’s current evidence...');
     try {
       const result = await generateGameSenseCandidates(projectId, sourceId, true);
       window.dispatchEvent(new CustomEvent('gamesense-evidence-updated', { detail: { sourceId } }));
-      setRefreshToken((value) => value + 1);
       setStatus(result.generated_count ? `Titan generated ${result.generated_count} refreshed GameSense clip candidate(s).` : 'Titan found no clip candidates above the current GameSense threshold.');
     } catch (caught) {
       setStatus(caught instanceof Error ? caught.message : 'Unable to rerank GameSense evidence for this source.');
@@ -99,14 +112,6 @@ export function SourceCandidateBrowser({ projectId }: { projectId?: string }) {
     }
   }
 
-  const ranked = useMemo(() => [...candidates].sort((a, b) => b.score - a.score), [candidates]);
-  const strongestChat = useMemo(() => {
-    if (!summary) return null;
-    return summary.strongest_by_modality?.chat || summary.strongest_events.find((event) => event.modality === 'chat') || null;
-  }, [summary]);
-  const chatTerms = strongestChat ? evidenceStrings(strongestChat, 'top_terms') : [];
-  const chatSamples = strongestChat ? evidenceStrings(strongestChat, 'sample_messages') : [];
-  const chatHypeScore = strongestChat ? evidenceNumber(strongestChat, 'hype_score') : null;
   if (!projectId) return null;
 
   return <section className="card" style={{ marginTop: 18 }}>
@@ -121,8 +126,9 @@ export function SourceCandidateBrowser({ projectId }: { projectId?: string }) {
     </label>
     <div className="button-row" style={{ marginTop: 10 }}>
       <button className="button secondary" type="button" onClick={() => setRefreshToken((value) => value + 1)} disabled={!sourceId || isReranking}>Refresh Review</button>
-      <button className="button" type="button" onClick={rerankSourceEvidence} disabled={!sourceId || isReranking}>{isReranking ? 'Ranking Evidence...' : 'Rank Evidence Into Clips'}</button>
+      <button className="button" type="button" onClick={rerankSourceEvidence} disabled={!sourceId || !hasRankableEvidence || isReranking}>{isReranking ? 'Ranking Evidence...' : 'Rank Evidence Into Clips'}</button>
     </div>
+    {!isReranking && sourceId && summary?.total_events === 0 && <p style={{ marginTop: 10, opacity: 0.8 }}>No GameSense evidence yet. Run stream analysis, import chat, or add manual gameplay evidence before ranking clips.</p>}
     {status && <p style={{ marginTop: 10 }}>{status}</p>}
     {summary && <div style={{ marginTop: 12 }}>
       <div className="button-row">
