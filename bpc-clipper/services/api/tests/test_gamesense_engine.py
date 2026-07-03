@@ -14,7 +14,7 @@ class GameSenseEngineTests(unittest.TestCase):
 
         moments = build_gamesense_moments(signals)
 
-        self.assertGreaterEqual(len(moments), 1)
+        self.assertEqual(len(moments), 1)
         best = moments[0]
         self.assertEqual(best.category, "clutch")
         self.assertGreaterEqual(best.score, 90)
@@ -23,6 +23,33 @@ class GameSenseEngineTests(unittest.TestCase):
         self.assertIn("gameplay", best.explanation)
         self.assertIn("audio", best.explanation)
         self.assertIn("chat", best.explanation)
+
+    def test_audio_and_visual_signals_become_one_reaction_candidate(self):
+        signals = [
+            GameSignal("audio_spike", "audio", 50.0, 51.5, intensity=93, confidence=0.95),
+            GameSignal("scene_change", "visual", 51.0, 51.35, intensity=75, confidence=0.8),
+            GameSignal("scene_change", "visual", 52.0, 52.35, intensity=73, confidence=0.8),
+        ]
+
+        moments = build_gamesense_moments(signals)
+
+        self.assertEqual(len(moments), 1)
+        self.assertEqual(moments[0].category, "reaction_moment")
+        self.assertIn("audio spike", moments[0].explanation)
+        self.assertIn("scene change", moments[0].explanation)
+
+    def test_far_apart_highlights_are_preserved(self):
+        signals = [
+            GameSignal("clutch", "gameplay", 30.0, 32.0, intensity=95, confidence=1.0),
+            GameSignal("scream", "audio", 32.0, 33.0, intensity=90, confidence=1.0),
+            GameSignal("victory", "gameplay", 120.0, 123.0, intensity=96, confidence=1.0),
+            GameSignal("chat_spike", "chat", 123.0, 125.0, intensity=92, confidence=1.0),
+        ]
+
+        moments = build_gamesense_moments(signals)
+
+        self.assertEqual(len(moments), 2)
+        self.assertEqual({moment.category for moment in moments}, {"clutch", "victory"})
 
     def test_single_low_signal_does_not_create_a_clip(self):
         moments = build_gamesense_moments([
