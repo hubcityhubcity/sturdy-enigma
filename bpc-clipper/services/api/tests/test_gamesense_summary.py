@@ -30,11 +30,26 @@ class GameSenseSummaryTests(unittest.TestCase):
         self.assertEqual(summary["modality_counts"]["facecam"], 0)
         self.assertEqual(summary["event_type_counts"]["audio_spike"], 1)
         self.assertEqual(summary["strongest_events"][0]["event_type"], "audio_spike")
+        self.assertEqual(summary["strongest_by_modality"]["chat"]["event_type"], "chat_spike")
+
+    def test_chat_is_kept_when_overall_top_five_excludes_it(self):
+        events = [
+            Event(f"audio_{index}", "audio", index, index + 0.5, 100 - index, 0.9)
+            for index in range(5)
+        ]
+        events.append(Event("chat_spike", "chat", 30.0, 31.0, 70, 0.8, {"top_terms": ["w"]}))
+
+        summary = summarize_gamesense_events(events)
+
+        self.assertNotIn("chat_spike", [event["event_type"] for event in summary["strongest_events"]])
+        self.assertEqual(summary["strongest_by_modality"]["chat"]["event_type"], "chat_spike")
+        self.assertEqual(summary["strongest_by_modality"]["chat"]["evidence"]["top_terms"], ["w"])
 
     def test_empty_summary_keeps_standard_modalities(self):
         summary = summarize_gamesense_events([])
         self.assertEqual(summary["total_events"], 0)
         self.assertEqual(summary["strongest_events"], [])
+        self.assertEqual(summary["strongest_by_modality"], {})
         self.assertEqual(summary["modality_counts"]["audio"], 0)
         self.assertEqual(summary["modality_counts"]["gameplay"], 0)
 
