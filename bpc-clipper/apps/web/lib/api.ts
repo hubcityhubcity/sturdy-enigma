@@ -14,7 +14,7 @@ export type ExportRecord = { export_id: string; project_id: string; edit_timelin
 export type RenderJob = { job_id: string; export_id?: string | null; project_id: string; stage: string; progress: number; message: string; status: string; error?: string | null };
 export type GameSenseDetectionResult = { source_id: string; project_id: string; detector: string; created_count: number; events: GameSenseEvent[]; message?: string };
 export type GameSenseStreamAnalysisResult = GameSenseDetectionResult & { summary: { audio_spike_count: number; visual_scene_change_count: number; visual_threshold: number } };
-export type GameSenseSummary = { project_id: string; source_id?: string | null; total_events: number; modality_counts: Record<string, number>; event_type_counts: Record<string, number>; strongest_events: GameSenseEvidence[] };
+export type GameSenseSummary = { project_id: string; source_id?: string | null; total_events: number; modality_counts: Record<string, number>; event_type_counts: Record<string, number>; strongest_events: GameSenseEvidence[]; strongest_by_modality?: Record<string, GameSenseEvidence> };
 
 export function absoluteApiUrl(path?: string | null): string | null { if (!path) return null; if (path.startsWith('http://') || path.startsWith('https://')) return path; return `${API_ORIGIN}${path}`; }
 
