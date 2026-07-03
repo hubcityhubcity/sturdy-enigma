@@ -133,6 +133,14 @@ export type GameSenseDetectionResult = {
   message?: string;
 };
 
+export type GameSenseStreamAnalysisResult = GameSenseDetectionResult & {
+  summary: {
+    audio_spike_count: number;
+    visual_scene_change_count: number;
+    visual_threshold: number;
+  };
+};
+
 export function absoluteApiUrl(path?: string | null): string | null {
   if (!path) return null;
   if (path.startsWith('http://') || path.startsWith('https://')) return path;
@@ -168,18 +176,18 @@ export async function listSources(projectId: string): Promise<{ project_id: stri
 }
 
 export async function detectGameSenseAudio(sourceId: string, replaceExisting = true): Promise<GameSenseDetectionResult> {
-  return jsonRequest(`/sources/${sourceId}/gamesense/detect/audio`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ replace_existing: replaceExisting }),
-  });
+  return jsonRequest(`/sources/${sourceId}/gamesense/detect/audio`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ replace_existing: replaceExisting }) });
 }
 
 export async function detectGameSenseVisual(sourceId: string, replaceExisting = true, threshold = 0.30): Promise<GameSenseDetectionResult> {
-  return jsonRequest(`/sources/${sourceId}/gamesense/detect/visual`, {
+  return jsonRequest(`/sources/${sourceId}/gamesense/detect/visual`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ replace_existing: replaceExisting, threshold }) });
+}
+
+export async function analyzeGameSenseStream(sourceId: string, replaceExisting = true, visualThreshold = 0.30): Promise<GameSenseStreamAnalysisResult> {
+  return jsonRequest(`/sources/${sourceId}/gamesense/analyze`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ replace_existing: replaceExisting, threshold }),
+    body: JSON.stringify({ replace_existing: replaceExisting, visual_threshold: visualThreshold }),
   });
 }
 
