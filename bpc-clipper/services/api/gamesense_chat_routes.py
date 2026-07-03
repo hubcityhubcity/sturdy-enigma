@@ -99,6 +99,9 @@ def detect_gamesense_chat(source_id: str, payload: ChatDetectionRequest, db: Ses
                 "messages_per_second": spike.messages_per_second,
                 "baseline_messages_per_second": spike.baseline_messages_per_second,
                 "hype_message_count": spike.hype_message_count,
+                "hype_score": spike.hype_score,
+                "top_terms": spike.top_terms,
+                "sample_messages": spike.sample_messages,
             },
         )
         db.add(event)
