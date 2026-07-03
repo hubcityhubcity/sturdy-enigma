@@ -104,7 +104,7 @@ export function SourceCandidateBrowser({ projectId }: { projectId?: string }) {
     try {
       const result = await generateGameSenseCandidates(projectId, sourceId, true);
       window.dispatchEvent(new CustomEvent('gamesense-evidence-updated', { detail: { sourceId } }));
-      setStatus(result.generated_count ? `Titan generated ${result.generated_count} refreshed GameSense clip candidate(s).` : 'Titan found no clip candidates above the current GameSense threshold.');
+      setStatus(result.generated_count ? `Titan generated ${result.generated_count} refreshed GameSense clip candidate(s).` : result.message || 'Titan found no clip candidates above the current GameSense threshold.');
     } catch (caught) {
       setStatus(caught instanceof Error ? caught.message : 'Unable to rerank GameSense evidence for this source.');
     } finally {
