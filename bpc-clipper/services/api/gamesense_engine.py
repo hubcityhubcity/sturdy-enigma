@@ -1,7 +1,7 @@
 """Deterministic multimodal scoring for gaming-stream moments.
 
 GameSense v1 does not detect gameplay directly. It receives normalized, time-coded
-signals from future adapters (game HUD, audio, chat, facecam, or transcript) and
+signals from future adapters (game HUD, audio, chat, facecam, visual, or transcript) and
 combines nearby evidence into clip-ready moments with setup and reaction room.
 """
 
@@ -14,6 +14,7 @@ MODALITY_WEIGHTS = {
     "audio": 0.78,
     "chat": 0.72,
     "facecam": 0.86,
+    "visual": 0.66,
     "transcript": 0.5,
 }
 
@@ -27,6 +28,8 @@ EVENT_TYPE_BONUSES = {
     "laugh": 12,
     "scream": 14,
     "chat_spike": 14,
+    "audio_spike": 10,
+    "scene_change": 9,
     "reaction": 12,
     "fail": 10,
     "combo": 14,
@@ -124,7 +127,7 @@ def build_gamesense_moments(
         raw_score += sum(normalized_score(signal) * 0.35 for signal in nearby if signal is not anchor)
         modalities = {signal.modality for signal in nearby}
         raw_score += max(0, len(modalities) - 1) * 8
-        if "gameplay" in modalities and ("audio" in modalities or "facecam" in modalities or "chat" in modalities):
+        if "gameplay" in modalities and ("audio" in modalities or "facecam" in modalities or "chat" in modalities or "visual" in modalities):
             raw_score += 10
 
         score = clamp(raw_score)
