@@ -5,6 +5,7 @@ from database import get_db
 from gamesense_analysis_routes import router as gamesense_analysis_router
 from gamesense_chat_routes import router as gamesense_chat_router
 from gamesense_routes import router as gamesense_router
+from gamesense_summary_routes import router as gamesense_summary_router
 from gamesense_visual_routes import router as gamesense_visual_router
 from models import CandidateClip, Transcript, TranscriptSegment
 from scoring_engine import score_segment
@@ -14,6 +15,7 @@ router.include_router(gamesense_router)
 router.include_router(gamesense_chat_router)
 router.include_router(gamesense_visual_router)
 router.include_router(gamesense_analysis_router)
+router.include_router(gamesense_summary_router)
 
 
 def serialize_candidate(candidate: CandidateClip) -> dict:
