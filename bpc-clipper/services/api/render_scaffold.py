@@ -3,7 +3,7 @@ import subprocess
 from pathlib import Path
 
 from caption_presets import ffmpeg_force_style
-from caption_segments import build_caption_segments
+from caption_segments import CaptionSegment, build_caption_segments, build_caption_segments_from_words
 from local_storage import STORAGE_ROOT
 from models import EditTimeline, ExportRecord, Source
 
@@ -29,9 +29,23 @@ def caption_duration(edit: EditTimeline) -> float:
     return max(1.0, edit.end_seconds - edit.start_seconds)
 
 
-def build_srt(edit: EditTimeline) -> str:
-    text = edit.hook_text or "BPC export placeholder"
-    segments = build_caption_segments(text, caption_duration(edit))
+def caption_segments_for_export(edit: EditTimeline, caption_words: list[dict] | None = None) -> tuple[list[CaptionSegment], str]:
+    """Prefer real word timestamps and retain text-only captions as a safe fallback."""
+    duration = caption_duration(edit)
+    timed_segments = build_caption_segments_from_words(
+        caption_words or [],
+        clip_start_seconds=edit.start_seconds,
+        clip_duration_seconds=duration,
+    )
+    if timed_segments:
+        return timed_segments, "word_timed"
+
+    text = edit.hook_text or "Titan export placeholder"
+    return build_caption_segments(text, duration), "estimated_from_hook_text"
+
+
+def build_srt(edit: EditTimeline, caption_words: list[dict] | None = None) -> str:
+    segments, _ = caption_segments_for_export(edit, caption_words)
     blocks = []
     for segment in segments:
         blocks.extend([
@@ -43,9 +57,8 @@ def build_srt(edit: EditTimeline) -> str:
     return "\n".join(blocks)
 
 
-def build_vtt(edit: EditTimeline) -> str:
-    text = edit.hook_text or "BPC export placeholder"
-    segments = build_caption_segments(text, caption_duration(edit))
+def build_vtt(edit: EditTimeline, caption_words: list[dict] | None = None) -> str:
+    segments, _ = caption_segments_for_export(edit, caption_words)
     lines = ["WEBVTT", ""]
     for segment in segments:
         lines.extend([
@@ -78,12 +91,18 @@ def build_video_filter(export: ExportRecord, edit: EditTimeline, srt_path: Path 
     return ",".join(filters) if filters else None
 
 
-def write_sidecar_files(export: ExportRecord, edit: EditTimeline, video_path: Path, render_status: str) -> dict:
+def write_sidecar_files(
+    export: ExportRecord,
+    edit: EditTimeline,
+    video_path: Path,
+    render_status: str,
+    caption_words: list[dict] | None = None,
+) -> dict:
     folder = export_dir(export.project_id, export.id)
     metadata_path = folder / "metadata.json"
     srt_path = folder / "captions.srt"
     vtt_path = folder / "captions.vtt"
-    caption_segments = build_caption_segments(edit.hook_text or "BPC export placeholder", caption_duration(edit))
+    caption_segments, caption_timing_mode = caption_segments_for_export(edit, caption_words)
 
     metadata = {
         "export_id": export.id,
@@ -96,6 +115,8 @@ def write_sidecar_files(export: ExportRecord, edit: EditTimeline, video_path: Pa
         "hook_text": edit.hook_text,
         "caption_preset": edit.caption_preset,
         "caption_segment_count": len(caption_segments),
+        "caption_timing_mode": caption_timing_mode,
+        "caption_word_count": len(caption_words or []),
         "crop_mode": edit.crop_mode,
         "status": render_status,
         "video_path": str(video_path),
@@ -105,9 +126,9 @@ def write_sidecar_files(export: ExportRecord, edit: EditTimeline, video_path: Pa
 
     metadata_path.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
     if export.include_srt or export.include_burned_captions:
-        srt_path.write_text(build_srt(edit), encoding="utf-8")
+        srt_path.write_text(build_srt(edit, caption_words), encoding="utf-8")
     if export.include_vtt:
-        vtt_path.write_text(build_vtt(edit), encoding="utf-8")
+        vtt_path.write_text(build_vtt(edit, caption_words), encoding="utf-8")
 
     return {
         "metadata_path": str(metadata_path),
@@ -117,39 +138,36 @@ def write_sidecar_files(export: ExportRecord, edit: EditTimeline, video_path: Pa
     }
 
 
-def create_placeholder_export_files(export: ExportRecord, edit: EditTimeline) -> dict:
+def create_placeholder_export_files(export: ExportRecord, edit: EditTimeline, caption_words: list[dict] | None = None) -> dict:
     folder = export_dir(export.project_id, export.id)
     video_path = folder / "video-placeholder.txt"
     video_path.write_text(
         "Placeholder only. Real FFmpeg rendering will replace this with an MP4.",
         encoding="utf-8",
     )
-    return write_sidecar_files(export, edit, video_path, "placeholder_render_complete")
+    return write_sidecar_files(export, edit, video_path, "placeholder_render_complete", caption_words)
 
 
-def render_trimmed_mp4(export: ExportRecord, edit: EditTimeline, source: Source | None) -> dict:
-    """Render a trimmed MP4 from source media.
-
-    Current supported outputs:
-    - source aspect ratio trim
-    - 1080x1920 vertical crop for Shorts/TikTok/Reels formats
-    - optional burned captions from generated SRT
-    - caption style presets applied through FFmpeg force_style
-    - readable segmented captions
-    """
+def render_trimmed_mp4(
+    export: ExportRecord,
+    edit: EditTimeline,
+    source: Source | None,
+    caption_words: list[dict] | None = None,
+) -> dict:
+    """Render a trimmed MP4, preferring actual transcript-word timing for captions."""
     if source is None or not source.storage_path:
-        return create_placeholder_export_files(export, edit)
+        return create_placeholder_export_files(export, edit, caption_words)
 
     input_path = Path(source.storage_path)
     if not input_path.exists():
-        return create_placeholder_export_files(export, edit)
+        return create_placeholder_export_files(export, edit, caption_words)
 
     folder = export_dir(export.project_id, export.id)
     output_path = folder / "clip.mp4"
     duration = caption_duration(edit)
     srt_path = folder / "captions.srt"
     if export.include_burned_captions:
-        srt_path.write_text(build_srt(edit), encoding="utf-8")
+        srt_path.write_text(build_srt(edit, caption_words), encoding="utf-8")
     vf = build_video_filter(export, edit, srt_path if export.include_burned_captions else None)
 
     command = [
@@ -176,16 +194,16 @@ def render_trimmed_mp4(export: ExportRecord, edit: EditTimeline, source: Source 
     try:
         subprocess.run(command, check=True, capture_output=True, text=True)
     except FileNotFoundError:
-        return create_placeholder_export_files(export, edit)
+        return create_placeholder_export_files(export, edit, caption_words)
     except subprocess.CalledProcessError as error:
         error_path = folder / "render-error.txt"
         error_path.write_text(error.stderr or "FFmpeg render failed.", encoding="utf-8")
-        return create_placeholder_export_files(export, edit)
+        return create_placeholder_export_files(export, edit, caption_words)
 
     if export.include_burned_captions:
-        status = "ffmpeg_burned_segmented_captions_complete"
+        status = "ffmpeg_burned_word_timed_captions_complete" if caption_words else "ffmpeg_burned_segmented_captions_complete"
     elif is_vertical_format(export.format):
         status = "ffmpeg_vertical_9x16_complete"
     else:
         status = "ffmpeg_trim_complete"
-    return write_sidecar_files(export, edit, output_path, status)
+    return write_sidecar_files(export, edit, output_path, status, caption_words)
