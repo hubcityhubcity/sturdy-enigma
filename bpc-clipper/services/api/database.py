@@ -22,6 +22,6 @@ def get_db():
 
 
 def create_db_and_tables():
-    from models import CandidateClip, Job, Project, Source, Transcript, TranscriptSegment, TranscriptWord
-
+    from models import CandidateClip, EditTimeline, ExportRecord, GameSenseEvent, Job, Project, Source, Transcript, TranscriptSegment, TranscriptWord  # noqa: F401
+    from workspace_models import Workspace, WorkspaceProject  # noqa: F401
     Base.metadata.create_all(bind=engine)
