@@ -39,8 +39,8 @@ function ScoreSignalRow({ signal }: { signal: ScoreSignal }) {
 
 function ScoreBreakdownPanel({ breakdown }: { breakdown?: ScoreBreakdown }) {
   const signals = scoreOrder.map((key) => breakdown?.[key]).filter(Boolean) as ScoreSignal[];
-  const gameEvidence = breakdown?.engine === 'gamesense_v1' ? breakdown.evidence || [] : [];
-  if (gameEvidence.length) return <div className="card" style={{ marginTop: 12 }}><h3>Titan GameSense</h3>{breakdown?.overall && <p><strong>Moment score:</strong> {breakdown.overall.score} — {breakdown.overall.explanation}</p>}<p><strong>Aligned evidence:</strong> {gameEvidence.length} signal(s)</p>{gameEvidence.map((signal, index) => <p key={`${signal.event_type}-${index}`} style={{ margin: '6px 0', opacity: 0.9 }}>{formatCategory(signal.event_type)} · {formatCategory(signal.modality)} · intensity {signal.intensity}</p>)}</div>;
+  const evidence = breakdown?.engine === 'gamesense_v1' ? breakdown.evidence || [] : [];
+  if (evidence.length) return <div className="card" style={{ marginTop: 12 }}><h3>Titan GameSense</h3>{breakdown?.overall && <p><strong>Moment score:</strong> {breakdown.overall.score} — {breakdown.overall.explanation}</p>}<p><strong>Aligned evidence:</strong> {evidence.length} signal(s)</p>{evidence.map((signal, index) => <p key={`${signal.event_type}-${index}`} style={{ margin: '6px 0', opacity: 0.9 }}>{formatCategory(signal.event_type)} · {formatCategory(signal.modality)} · intensity {signal.intensity}</p>)}</div>;
   if (!signals.length) return <p><strong>Titan Brain:</strong> Score breakdown not available yet.</p>;
   return <div className="card" style={{ marginTop: 12 }}><h3>Titan Brain</h3>{breakdown?.overall && <p><strong>Overall:</strong> {breakdown.overall.score} — {breakdown.overall.explanation}</p>}{signals.map((signal) => <ScoreSignalRow key={signal.name} signal={signal} />)}</div>;
 }
@@ -61,6 +61,7 @@ export function ProducerModeClient({ projectId }: { projectId?: string }) {
   const [isScanningAudio, setIsScanningAudio] = useState(false);
   const [isScanningVisual, setIsScanningVisual] = useState(false);
   const [evidenceRefreshToken, setEvidenceRefreshToken] = useState(0);
+  const [activeEvidenceSourceId, setActiveEvidenceSourceId] = useState<string | null>(null);
   const sortedCandidates = useMemo(() => [...candidates].sort((a, b) => b.score - a.score), [candidates]);
   const refreshEvidence = () => setEvidenceRefreshToken((value) => value + 1);
 
@@ -74,6 +75,7 @@ export function ProducerModeClient({ projectId }: { projectId?: string }) {
         setCandidates(generated.candidates); setStatus('Generated fresh transcript candidates.');
       } catch (caught) { setError(caught instanceof Error ? caught.message : 'Unable to load candidates.'); setStatus('Showing demo candidates because the API did not respond.'); }
     }
+    setActiveEvidenceSourceId(null);
     loadCandidates();
   }, [projectId]);
 
@@ -83,6 +85,7 @@ export function ProducerModeClient({ projectId }: { projectId?: string }) {
     const sources = await listSources(projectId);
     const source = sources.sources[sources.sources.length - 1];
     if (!source) throw new Error(missingMessage);
+    setActiveEvidenceSourceId(source.source_id);
     await action(source.source_id);
   }
 
@@ -132,7 +135,7 @@ export function ProducerModeClient({ projectId }: { projectId?: string }) {
   async function generateGameSense() {
     if (!projectId) return setStatus('Create a real gaming project first to generate GameSense clips.');
     setIsGeneratingGameSense(true); setError(''); setStatus('Titan GameSense is fusing gameplay, audio, visual, chat, and reaction evidence...');
-    try { const result = await generateGameSenseCandidates(projectId, undefined, true); if (!result.candidates.length) throw new Error('No strong gaming moments met the GameSense threshold.'); setCandidates(result.candidates); refreshEvidence(); setStatus(`Titan GameSense generated ${result.generated_count} gaming candidate(s).`); }
+    try { const result = await generateGameSenseCandidates(projectId, activeEvidenceSourceId, true); if (!result.candidates.length) throw new Error('No strong gaming moments met the GameSense threshold.'); setCandidates(result.candidates); refreshEvidence(); setStatus(`Titan GameSense generated ${result.generated_count} gaming candidate(s).`); }
     catch (caught) { const message = caught instanceof Error ? caught.message : 'Unable to generate GameSense clips.'; setError(message); setStatus(message.includes('gamesense_events_not_found') ? 'No GameSense evidence exists yet. Analyze the stream, import chat, or add gameplay events first.' : 'GameSense generation failed.'); }
     finally { setIsGeneratingGameSense(false); }
   }
@@ -174,7 +177,7 @@ export function ProducerModeClient({ projectId }: { projectId?: string }) {
       <details style={{ marginTop: 12 }}><summary style={{ cursor: 'pointer' }}>Advanced detection controls</summary><div className="button-row" style={{ marginTop: 10 }}><button className="button secondary" type="button" onClick={scanAudioForReactions} disabled={isScanningAudio || !projectId}>{isScanningAudio ? 'Scanning Stream Audio...' : 'Scan Audio for Reactions'}</button><button className="button secondary" type="button" onClick={scanVisualForAction} disabled={isScanningVisual || !projectId}>{isScanningVisual ? 'Scanning Stream Visuals...' : 'Scan Visual Action'}</button></div></details>
       <p style={{ marginTop: 10, opacity: 0.8 }}>Gaming workflow: analyze local stream evidence, rank the strongest GameSense moments, then review and render. Visual changes are signals—not automatic kill labels.</p>
     </section>
-    <GameSenseEvidencePanel projectId={projectId} refreshToken={evidenceRefreshToken} />
+    <GameSenseEvidencePanel projectId={projectId} sourceId={activeEvidenceSourceId} refreshToken={evidenceRefreshToken} />
     <section style={{ display: 'grid', gap: 18, marginTop: 24 }}>
       {sortedCandidates.map((candidate) => {
         const workflow = workflowByCandidate[candidate.candidate_id];
