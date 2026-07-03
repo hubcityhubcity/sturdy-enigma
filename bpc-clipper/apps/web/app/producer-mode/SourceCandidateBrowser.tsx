@@ -83,7 +83,10 @@ export function SourceCandidateBrowser({ projectId }: { projectId?: string }) {
   }, [projectId, sourceId, refreshToken]);
 
   const ranked = useMemo(() => [...candidates].sort((a, b) => b.score - a.score), [candidates]);
-  const strongestChat = useMemo(() => summary?.strongest_events.find((event) => event.modality === 'chat') || null, [summary]);
+  const strongestChat = useMemo(() => {
+    if (!summary) return null;
+    return summary.strongest_by_modality?.chat || summary.strongest_events.find((event) => event.modality === 'chat') || null;
+  }, [summary]);
   const chatTerms = strongestChat ? evidenceStrings(strongestChat, 'top_terms') : [];
   const chatSamples = strongestChat ? evidenceStrings(strongestChat, 'sample_messages') : [];
   const chatHypeScore = strongestChat ? evidenceNumber(strongestChat, 'hype_score') : null;
