@@ -11,7 +11,15 @@ function titleCase(value: string) {
   return value.replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
-export function GameSenseEvidencePanel({ projectId, refreshToken }: { projectId?: string; refreshToken: number }) {
+export function GameSenseEvidencePanel({
+  projectId,
+  sourceId,
+  refreshToken,
+}: {
+  projectId?: string;
+  sourceId?: string | null;
+  refreshToken: number;
+}) {
   const [summary, setSummary] = useState<GameSenseSummary | null>(null);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -22,7 +30,7 @@ export function GameSenseEvidencePanel({ projectId, refreshToken }: { projectId?
     async function load() {
       setIsLoading(true); setError('');
       try {
-        const next = await getGameSenseSummary(projectId);
+        const next = await getGameSenseSummary(projectId, sourceId);
         if (!cancelled) setSummary(next);
       } catch (caught) {
         if (!cancelled) setError(caught instanceof Error ? caught.message : 'Unable to load GameSense evidence.');
@@ -32,12 +40,13 @@ export function GameSenseEvidencePanel({ projectId, refreshToken }: { projectId?
     }
     load();
     return () => { cancelled = true; };
-  }, [projectId, refreshToken]);
+  }, [projectId, sourceId, refreshToken]);
 
   if (!projectId) return null;
   return (
     <section className="card" style={{ marginTop: 18 }}>
       <h2>Why Titan picked these moments</h2>
+      <p style={{ opacity: 0.78 }}>{sourceId ? 'Evidence is scoped to the source you most recently analyzed.' : 'Showing evidence across this project.'}</p>
       {isLoading && <p>Loading evidence timeline...</p>}
       {error && <p style={{ color: '#ff8a8a' }}><strong>Evidence note:</strong> {error}</p>}
       {summary && <>
