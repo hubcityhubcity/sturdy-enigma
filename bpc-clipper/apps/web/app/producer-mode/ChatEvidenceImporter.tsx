@@ -87,10 +87,11 @@ export function ChatEvidenceImporter({ projectId }: { projectId?: string }) {
 
   async function importChatEvidence() {
     if (!sourceId) { setStatus('Select a source first.'); return; }
-    if (!preview.value) { setStatus(preview.error); return; }
+    const chatPreview = preview.value;
+    if (!chatPreview) { setStatus(preview.error); return; }
     setIsImporting(true); setStatus('');
     try {
-      const result = await detectGameSenseChat(sourceId, preview.value.messages, true);
+      const result = await detectGameSenseChat(sourceId, chatPreview.messages, true);
       notifyEvidenceUpdated(sourceId);
       setStatus(result.created_count ? `Imported chat evidence and found ${result.created_count} chat spike(s).` : 'Chat was imported, but no burst was strong enough to become a spike.');
     } catch (caught) {
@@ -102,13 +103,14 @@ export function ChatEvidenceImporter({ projectId }: { projectId?: string }) {
 
   async function importAndGenerateClips() {
     if (!projectId || !sourceId) { setStatus('Select a source first.'); return; }
-    if (!preview.value) { setStatus(preview.error); return; }
+    const chatPreview = preview.value;
+    if (!chatPreview) { setStatus(preview.error); return; }
     setIsImporting(true); setStatus('Analyzing chat and ranking GameSense clips...');
     try {
-      const chatResult = await detectGameSenseChat(sourceId, preview.value.messages, true);
+      const chatResult = await detectGameSenseChat(sourceId, chatPreview.messages, true);
       const clipResult = await generateGameSenseCandidates(projectId, sourceId, true);
       notifyEvidenceUpdated(sourceId);
-      setStatus(`Chat analysis found ${chatResult.created_count} spike(s) and generated ${clipResult.generated_count} GameSense clip candidate(s).`);
+      setStatus(clipResult.generated_count ? `Chat analysis found ${chatResult.created_count} spike(s) and generated ${clipResult.generated_count} GameSense clip candidate(s).` : clipResult.message || `Chat analysis found ${chatResult.created_count} spike(s), but no GameSense clip candidate met the current threshold.`);
     } catch (caught) {
       setStatus(caught instanceof Error ? caught.message : 'Unable to analyze chat and generate clips.');
     } finally {
