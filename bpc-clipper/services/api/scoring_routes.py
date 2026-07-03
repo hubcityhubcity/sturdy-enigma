@@ -11,6 +11,7 @@ from models import CandidateClip, Transcript, TranscriptSegment
 from publishing_routes import router as publishing_router
 from scoring_engine import score_segment
 from source_candidate_routes import router as source_candidate_router
+from workspace_routes import router as workspace_router
 
 router = APIRouter()
 router.include_router(gamesense_router)
@@ -20,6 +21,7 @@ router.include_router(gamesense_analysis_router)
 router.include_router(gamesense_summary_router)
 router.include_router(source_candidate_router)
 router.include_router(publishing_router)
+router.include_router(workspace_router)
 
 
 def serialize_candidate(candidate: CandidateClip) -> dict:
