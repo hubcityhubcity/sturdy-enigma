@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Candidate, GameSenseEvidence, GameSenseSummary, Source, getGameSenseSummary, listSourceCandidates, listSources } from '../../lib/api';
+import { Candidate, GameSenseEvidence, GameSenseSummary, Source, generateGameSenseCandidates, getGameSenseSummary, listSourceCandidates, listSources } from '../../lib/api';
 
 function sourceLabel(source: Source) {
   return source.title || source.original_filename || source.original_url || `Source ${source.source_id.slice(0, 8)}`;
@@ -32,6 +32,7 @@ export function SourceCandidateBrowser({ projectId }: { projectId?: string }) {
   const [summary, setSummary] = useState<GameSenseSummary | null>(null);
   const [status, setStatus] = useState('');
   const [refreshToken, setRefreshToken] = useState(0);
+  const [isReranking, setIsReranking] = useState(false);
 
   useEffect(() => {
     if (!projectId) return;
@@ -82,6 +83,22 @@ export function SourceCandidateBrowser({ projectId }: { projectId?: string }) {
     return () => { cancelled = true; };
   }, [projectId, sourceId, refreshToken]);
 
+  async function rerankSourceEvidence() {
+    if (!projectId || !sourceId) return;
+    setIsReranking(true);
+    setStatus('Titan GameSense is ranking this source’s current evidence...');
+    try {
+      const result = await generateGameSenseCandidates(projectId, sourceId, true);
+      window.dispatchEvent(new CustomEvent('gamesense-evidence-updated', { detail: { sourceId } }));
+      setRefreshToken((value) => value + 1);
+      setStatus(result.generated_count ? `Titan generated ${result.generated_count} refreshed GameSense clip candidate(s).` : 'Titan found no clip candidates above the current GameSense threshold.');
+    } catch (caught) {
+      setStatus(caught instanceof Error ? caught.message : 'Unable to rerank GameSense evidence for this source.');
+    } finally {
+      setIsReranking(false);
+    }
+  }
+
   const ranked = useMemo(() => [...candidates].sort((a, b) => b.score - a.score), [candidates]);
   const strongestChat = useMemo(() => {
     if (!summary) return null;
@@ -97,11 +114,15 @@ export function SourceCandidateBrowser({ projectId }: { projectId?: string }) {
     <p style={{ opacity: 0.8 }}>Browse previous candidates and the evidence Titan used for this specific source.</p>
     <label style={{ display: 'grid', gap: 6, marginTop: 10 }}>
       <strong>Source</strong>
-      <select value={sourceId} onChange={(event) => setSourceId(event.target.value)} disabled={!sources.length}>
+      <select value={sourceId} onChange={(event) => setSourceId(event.target.value)} disabled={!sources.length || isReranking}>
         <option value="">Select a source</option>
         {sources.map((source) => <option key={source.source_id} value={source.source_id}>{sourceLabel(source)}</option>)}
       </select>
     </label>
+    <div className="button-row" style={{ marginTop: 10 }}>
+      <button className="button secondary" type="button" onClick={() => setRefreshToken((value) => value + 1)} disabled={!sourceId || isReranking}>Refresh Review</button>
+      <button className="button" type="button" onClick={rerankSourceEvidence} disabled={!sourceId || isReranking}>{isReranking ? 'Ranking Evidence...' : 'Rank Evidence Into Clips'}</button>
+    </div>
     {status && <p style={{ marginTop: 10 }}>{status}</p>}
     {summary && <div style={{ marginTop: 12 }}>
       <div className="button-row">
