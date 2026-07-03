@@ -34,6 +34,16 @@ export type ScoreSignal = {
   explanation: string;
 };
 
+export type GameSenseEvidence = {
+  event_type: string;
+  modality: string;
+  start_seconds: number;
+  end_seconds: number;
+  intensity: number;
+  confidence: number;
+  evidence?: Record<string, unknown>;
+};
+
 export type ScoreBreakdown = {
   hook?: ScoreSignal;
   curiosity?: ScoreSignal;
@@ -42,6 +52,9 @@ export type ScoreBreakdown = {
   story?: ScoreSignal;
   retention?: ScoreSignal;
   overall?: ScoreSignal;
+  engine?: string;
+  evidence_count?: number;
+  evidence?: GameSenseEvidence[];
 };
 
 export type Candidate = {
@@ -113,33 +126,36 @@ export function absoluteApiUrl(path?: string | null): string | null {
   return `${API_ORIGIN}${path}`;
 }
 
+async function jsonRequest<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const response = await fetch(`${API_BASE_URL}${path}`, options);
+  if (!response.ok) {
+    const message = await response.text();
+    throw new Error(message || `Request failed: ${response.status}`);
+  }
+  return response.json() as Promise<T>;
+}
+
 export async function createProject(input: {
   name: string;
   source_type: 'upload' | 'link' | 'unknown';
   rights_confirmed: boolean;
 }): Promise<Project> {
-  const response = await fetch(`${API_BASE_URL}/projects`, {
+  return jsonRequest('/projects', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(input),
   });
-
-  if (!response.ok) throw new Error('Failed to create project');
-  return response.json();
 }
 
 export async function createLinkSource(projectId: string, input: {
   url: string;
   rights_confirmed: boolean;
 }): Promise<{ project_id: string; source: Source; job_id: string; status: string }> {
-  const response = await fetch(`${API_BASE_URL}/projects/${projectId}/sources/link`, {
+  return jsonRequest(`/projects/${projectId}/sources/link`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(input),
   });
-
-  if (!response.ok) throw new Error('Failed to create link source');
-  return response.json();
 }
 
 export async function createUploadSource(projectId: string, input: {
@@ -149,41 +165,32 @@ export async function createUploadSource(projectId: string, input: {
   const body = new FormData();
   body.append('file', input.file);
   body.append('rights_confirmed', String(input.rights_confirmed));
-
-  const response = await fetch(`${API_BASE_URL}/projects/${projectId}/sources/upload`, {
-    method: 'POST',
-    body,
-  });
-
-  if (!response.ok) throw new Error('Failed to upload source');
-  return response.json();
+  return jsonRequest(`/projects/${projectId}/sources/upload`, { method: 'POST', body });
 }
 
 export async function generateCandidates(projectId: string): Promise<{ project_id: string; candidates: Candidate[] }> {
-  const response = await fetch(`${API_BASE_URL}/projects/${projectId}/candidates/generate`, {
-    method: 'POST',
-  });
+  return jsonRequest(`/projects/${projectId}/candidates/generate`, { method: 'POST' });
+}
 
-  if (!response.ok) throw new Error('Failed to generate candidates');
-  return response.json();
+export async function generateGameSenseCandidates(projectId: string, sourceId?: string | null, replaceExisting = false): Promise<{
+  project_id: string;
+  source_id?: string | null;
+  generated_count: number;
+  candidates: Candidate[];
+}> {
+  const search = new URLSearchParams();
+  if (sourceId) search.set('source_id', sourceId);
+  if (replaceExisting) search.set('replace_existing', 'true');
+  const query = search.toString();
+  return jsonRequest(`/projects/${projectId}/gamesense/candidates/generate${query ? `?${query}` : ''}`, { method: 'POST' });
 }
 
 export async function rescoreCandidates(projectId: string): Promise<{ project_id: string; updated_count: number; candidates: Candidate[] }> {
-  const response = await fetch(`${API_BASE_URL}/projects/${projectId}/candidates/rescore`, {
-    method: 'POST',
-  });
-
-  if (!response.ok) throw new Error('Failed to rescore candidates');
-  return response.json();
+  return jsonRequest(`/projects/${projectId}/candidates/rescore`, { method: 'POST' });
 }
 
 export async function listCandidates(projectId: string): Promise<{ project_id: string; candidates: Candidate[] }> {
-  const response = await fetch(`${API_BASE_URL}/projects/${projectId}/candidates`, {
-    cache: 'no-store',
-  });
-
-  if (!response.ok) throw new Error('Failed to list candidates');
-  return response.json();
+  return jsonRequest(`/projects/${projectId}/candidates`, { cache: 'no-store' });
 }
 
 export async function createEditTimeline(candidateId: string, input: {
@@ -191,7 +198,7 @@ export async function createEditTimeline(candidateId: string, input: {
   caption_preset?: string;
   crop_mode?: string;
 } = {}): Promise<EditTimeline> {
-  const response = await fetch(`${API_BASE_URL}/candidates/${candidateId}/edits`, {
+  return jsonRequest(`/candidates/${candidateId}/edits`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -200,9 +207,6 @@ export async function createEditTimeline(candidateId: string, input: {
       crop_mode: input.crop_mode || 'speaker_focus',
     }),
   });
-
-  if (!response.ok) throw new Error('Failed to create edit timeline');
-  return response.json();
 }
 
 export async function createExport(editId: string, input: {
@@ -212,7 +216,7 @@ export async function createExport(editId: string, input: {
   include_vtt?: boolean;
   include_metadata?: boolean;
 } = {}): Promise<ExportRecord> {
-  const response = await fetch(`${API_BASE_URL}/edits/${editId}/exports`, {
+  return jsonRequest(`/edits/${editId}/exports`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -223,43 +227,20 @@ export async function createExport(editId: string, input: {
       include_metadata: input.include_metadata ?? true,
     }),
   });
-
-  if (!response.ok) throw new Error('Failed to create export');
-  return response.json();
 }
 
 export async function renderExport(exportId: string): Promise<ExportRecord> {
-  const response = await fetch(`${API_BASE_URL}/exports/${exportId}/render`, {
-    method: 'POST',
-  });
-
-  if (!response.ok) throw new Error('Failed to render export');
-  return response.json();
+  return jsonRequest(`/exports/${exportId}/render`, { method: 'POST' });
 }
 
 export async function queueRenderExport(exportId: string): Promise<RenderJob> {
-  const response = await fetch(`${API_BASE_URL}/exports/${exportId}/queue-render`, {
-    method: 'POST',
-  });
-
-  if (!response.ok) throw new Error('Failed to queue render job');
-  return response.json();
+  return jsonRequest(`/exports/${exportId}/queue-render`, { method: 'POST' });
 }
 
 export async function getRenderJob(jobId: string): Promise<RenderJob> {
-  const response = await fetch(`${API_BASE_URL}/render-jobs/${jobId}`, {
-    cache: 'no-store',
-  });
-
-  if (!response.ok) throw new Error('Failed to get render job');
-  return response.json();
+  return jsonRequest(`/render-jobs/${jobId}`, { cache: 'no-store' });
 }
 
 export async function getExport(exportId: string): Promise<ExportRecord> {
-  const response = await fetch(`${API_BASE_URL}/exports/${exportId}`, {
-    cache: 'no-store',
-  });
-
-  if (!response.ok) throw new Error('Failed to get export');
-  return response.json();
+  return jsonRequest(`/exports/${exportId}`, { cache: 'no-store' });
 }
