@@ -8,7 +8,7 @@ from gamesense_routes import router as gamesense_router
 from gamesense_summary_routes import router as gamesense_summary_router
 from gamesense_visual_routes import router as gamesense_visual_router
 from models import CandidateClip, Transcript, TranscriptSegment
-from scoring_engine import score_segment
+from scoring_engine import risk_flags_for_breakdown, score_segment
 from source_candidate_routes import router as source_candidate_router
 
 router = APIRouter()
@@ -87,6 +87,7 @@ def rescore_project_candidates(project_id: str, db: Session = Depends(get_db)):
         candidate.score_breakdown = breakdown
         candidate.category = category_from_breakdown(breakdown)
         candidate.explanation = breakdown["overall"]["explanation"]
+        candidate.risk_flags = risk_flags_for_breakdown(breakdown)
         updated.append(candidate)
     db.commit()
     for candidate in updated:
