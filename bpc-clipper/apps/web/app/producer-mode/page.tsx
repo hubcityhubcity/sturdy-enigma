@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { ProducerModeClient } from './ProducerModeClient';
+import { SourceCandidateBrowser } from './SourceCandidateBrowser';
 
 export default function ProducerModePage({ searchParams }: { searchParams: { projectId?: string } }) {
   const projectId = searchParams?.projectId;
@@ -20,6 +21,7 @@ export default function ProducerModePage({ searchParams }: { searchParams: { pro
       </section>
 
       <ProducerModeClient projectId={projectId} />
+      <SourceCandidateBrowser projectId={projectId} />
     </div>
   );
 }
