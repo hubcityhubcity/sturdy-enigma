@@ -115,9 +115,12 @@ export function ProducerModeClient({ projectId }: { projectId?: string }) {
     setIsAnalyzingStream(true); setError(''); setStatus('Titan GameSense is analyzing stream audio and visual action...');
     try {
       await withNewestSource(async (sourceId) => {
-        const result = await analyzeGameSenseStream(sourceId, true, 0.30);
-        const { audio_spike_count, visual_scene_change_count } = result.summary;
-        setStatus(`Titan analyzed the stream: ${audio_spike_count} audio reaction spike(s) and ${visual_scene_change_count} visual action signal(s). Generate GameSense clips to rank the strongest moments.`);
+        const analysis = await analyzeGameSenseStream(sourceId, true, 0.30);
+        setStatus('Titan found evidence. Ranking the strongest GameSense moments...');
+        const generated = await generateGameSenseCandidates(projectId, sourceId, true);
+        setCandidates(generated.candidates);
+        const { audio_spike_count, visual_scene_change_count } = analysis.summary;
+        setStatus(`Titan analyzed the stream and ranked ${generated.generated_count} clip candidate(s) from ${audio_spike_count} audio reaction spike(s) and ${visual_scene_change_count} visual action signal(s).`);
       }, 'No source exists for this project yet.');
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : 'Unable to analyze this stream.';
@@ -208,7 +211,7 @@ export function ProducerModeClient({ projectId }: { projectId?: string }) {
     <section className="card" style={{ marginTop: 24 }}>
       <h2>Candidate status</h2><p>{status}</p>{projectId && <p><strong>Project ID:</strong> {projectId}</p>}{error && <p style={{ color: '#ff8a8a' }}><strong>API note:</strong> {error}</p>}
       <div className="button-row" style={{ marginTop: 12 }}>
-        <button className="button" type="button" onClick={analyzeStream} disabled={isAnalyzingStream || !projectId}>{isAnalyzingStream ? 'Analyzing Stream...' : 'Analyze Stream'}</button>
+        <button className="button" type="button" onClick={analyzeStream} disabled={isAnalyzingStream || !projectId}>{isAnalyzingStream ? 'Analyzing + Ranking...' : 'Analyze Stream + Find Clips'}</button>
         <button className="button secondary" type="button" onClick={generateGameSense} disabled={isGeneratingGameSense || !projectId}>{isGeneratingGameSense ? 'Finding Gaming Moments...' : 'Generate GameSense Clips'}</button>
         <button className="button secondary" type="button" onClick={rescoreProject} disabled={isRescoring || !projectId}>{isRescoring ? 'Rescoring...' : 'Rescore with Titan Brain'}</button>
       </div>
@@ -219,7 +222,7 @@ export function ProducerModeClient({ projectId }: { projectId?: string }) {
           <button className="button secondary" type="button" onClick={scanVisualForAction} disabled={isScanningVisual || !projectId}>{isScanningVisual ? 'Scanning Stream Visuals...' : 'Scan Visual Action'}</button>
         </div>
       </details>
-      <p style={{ marginTop: 10, opacity: 0.8 }}>Gaming workflow: analyze the local stream for audio and visual signals, add chat/gameplay evidence when available, then generate GameSense clips. Visual changes are signals—not automatic kill labels.</p>
+      <p style={{ marginTop: 10, opacity: 0.8 }}>Gaming workflow: analyze the local stream for audio and visual signals, rank the strongest GameSense moments, then review and render. Visual changes are signals—not automatic kill labels.</p>
     </section>
     <section style={{ display: 'grid', gap: 18, marginTop: 24 }}>
       {sortedCandidates.map((candidate) => {
