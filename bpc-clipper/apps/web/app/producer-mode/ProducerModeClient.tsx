@@ -8,6 +8,7 @@ import {
   ScoreBreakdown,
   ScoreSignal,
   absoluteApiUrl,
+  analyzeGameSenseStream,
   createEditTimeline,
   createExport,
   detectGameSenseAudio,
@@ -72,6 +73,7 @@ export function ProducerModeClient({ projectId }: { projectId?: string }) {
   const [workflowByCandidate, setWorkflowByCandidate] = useState<Record<string, CandidateWorkflowState>>({});
   const [isRescoring, setIsRescoring] = useState(false);
   const [isGeneratingGameSense, setIsGeneratingGameSense] = useState(false);
+  const [isAnalyzingStream, setIsAnalyzingStream] = useState(false);
   const [isScanningAudio, setIsScanningAudio] = useState(false);
   const [isScanningVisual, setIsScanningVisual] = useState(false);
 
@@ -106,6 +108,22 @@ export function ProducerModeClient({ projectId }: { projectId?: string }) {
     try { const result = await rescoreCandidates(projectId); setCandidates(result.candidates); setStatus(`Titan Brain rescored ${result.updated_count} candidate(s).`); }
     catch (caught) { setError(caught instanceof Error ? caught.message : 'Unable to rescore candidates.'); setStatus('Candidate rescore failed.'); }
     finally { setIsRescoring(false); }
+  }
+
+  async function analyzeStream() {
+    if (!projectId) return setStatus('Create a real gaming project first to analyze a stream.');
+    setIsAnalyzingStream(true); setError(''); setStatus('Titan GameSense is analyzing stream audio and visual action...');
+    try {
+      await withNewestSource(async (sourceId) => {
+        const result = await analyzeGameSenseStream(sourceId, true, 0.30);
+        const { audio_spike_count, visual_scene_change_count } = result.summary;
+        setStatus(`Titan analyzed the stream: ${audio_spike_count} audio reaction spike(s) and ${visual_scene_change_count} visual action signal(s). Generate GameSense clips to rank the strongest moments.`);
+      }, 'No source exists for this project yet.');
+    } catch (caught) {
+      const message = caught instanceof Error ? caught.message : 'Unable to analyze this stream.';
+      setError(message);
+      setStatus(message.includes('source_media_not_available') ? 'Stream analysis requires an uploaded or successfully imported local media source.' : 'GameSense stream analysis failed.');
+    } finally { setIsAnalyzingStream(false); }
   }
 
   async function scanAudioForReactions() {
@@ -145,7 +163,7 @@ export function ProducerModeClient({ projectId }: { projectId?: string }) {
       setCandidates(result.candidates); setStatus(`Titan GameSense generated ${result.generated_count} gaming candidate(s).`);
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : 'Unable to generate GameSense clips.';
-      setError(message); setStatus(message.includes('gamesense_events_not_found') ? 'No GameSense evidence exists yet. Scan audio/visuals, import chat, or add gameplay events first.' : 'GameSense generation failed.');
+      setError(message); setStatus(message.includes('gamesense_events_not_found') ? 'No GameSense evidence exists yet. Analyze the stream, import chat, or add gameplay events first.' : 'GameSense generation failed.');
     } finally { setIsGeneratingGameSense(false); }
   }
 
@@ -190,12 +208,18 @@ export function ProducerModeClient({ projectId }: { projectId?: string }) {
     <section className="card" style={{ marginTop: 24 }}>
       <h2>Candidate status</h2><p>{status}</p>{projectId && <p><strong>Project ID:</strong> {projectId}</p>}{error && <p style={{ color: '#ff8a8a' }}><strong>API note:</strong> {error}</p>}
       <div className="button-row" style={{ marginTop: 12 }}>
+        <button className="button" type="button" onClick={analyzeStream} disabled={isAnalyzingStream || !projectId}>{isAnalyzingStream ? 'Analyzing Stream...' : 'Analyze Stream'}</button>
+        <button className="button secondary" type="button" onClick={generateGameSense} disabled={isGeneratingGameSense || !projectId}>{isGeneratingGameSense ? 'Finding Gaming Moments...' : 'Generate GameSense Clips'}</button>
         <button className="button secondary" type="button" onClick={rescoreProject} disabled={isRescoring || !projectId}>{isRescoring ? 'Rescoring...' : 'Rescore with Titan Brain'}</button>
-        <button className="button secondary" type="button" onClick={scanAudioForReactions} disabled={isScanningAudio || !projectId}>{isScanningAudio ? 'Scanning Stream Audio...' : 'Scan Audio for Reactions'}</button>
-        <button className="button secondary" type="button" onClick={scanVisualForAction} disabled={isScanningVisual || !projectId}>{isScanningVisual ? 'Scanning Stream Visuals...' : 'Scan Visual Action'}</button>
-        <button className="button" type="button" onClick={generateGameSense} disabled={isGeneratingGameSense || !projectId}>{isGeneratingGameSense ? 'Finding Gaming Moments...' : 'Generate GameSense Clips'}</button>
       </div>
-      <p style={{ marginTop: 10, opacity: 0.8 }}>Gaming workflow: scan local stream audio and visuals, add chat/gameplay evidence when available, then generate GameSense clips. Visual changes are signals—not automatic kill labels.</p>
+      <details style={{ marginTop: 12 }}>
+        <summary style={{ cursor: 'pointer' }}>Advanced detection controls</summary>
+        <div className="button-row" style={{ marginTop: 10 }}>
+          <button className="button secondary" type="button" onClick={scanAudioForReactions} disabled={isScanningAudio || !projectId}>{isScanningAudio ? 'Scanning Stream Audio...' : 'Scan Audio for Reactions'}</button>
+          <button className="button secondary" type="button" onClick={scanVisualForAction} disabled={isScanningVisual || !projectId}>{isScanningVisual ? 'Scanning Stream Visuals...' : 'Scan Visual Action'}</button>
+        </div>
+      </details>
+      <p style={{ marginTop: 10, opacity: 0.8 }}>Gaming workflow: analyze the local stream for audio and visual signals, add chat/gameplay evidence when available, then generate GameSense clips. Visual changes are signals—not automatic kill labels.</p>
     </section>
     <section style={{ display: 'grid', gap: 18, marginTop: 24 }}>
       {sortedCandidates.map((candidate) => {
