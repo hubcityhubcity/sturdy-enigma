@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Candidate, GameSenseSummary, Source, getGameSenseSummary, listSourceCandidates, listSources } from '../../lib/api';
+import { Candidate, GameSenseEvidence, GameSenseSummary, Source, getGameSenseSummary, listSourceCandidates, listSources } from '../../lib/api';
 
 function sourceLabel(source: Source) {
   return source.title || source.original_filename || source.original_url || `Source ${source.source_id.slice(0, 8)}`;
@@ -13,6 +13,16 @@ function formatTime(seconds: number) {
 
 function titleCase(value: string) {
   return value.replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function evidenceStrings(event: GameSenseEvidence, key: string): string[] {
+  const value = event.evidence?.[key];
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
+}
+
+function evidenceNumber(event: GameSenseEvidence, key: string): number | null {
+  const value = event.evidence?.[key];
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
 export function SourceCandidateBrowser({ projectId }: { projectId?: string }) {
@@ -73,6 +83,10 @@ export function SourceCandidateBrowser({ projectId }: { projectId?: string }) {
   }, [projectId, sourceId, refreshToken]);
 
   const ranked = useMemo(() => [...candidates].sort((a, b) => b.score - a.score), [candidates]);
+  const strongestChat = useMemo(() => summary?.strongest_events.find((event) => event.modality === 'chat') || null, [summary]);
+  const chatTerms = strongestChat ? evidenceStrings(strongestChat, 'top_terms') : [];
+  const chatSamples = strongestChat ? evidenceStrings(strongestChat, 'sample_messages') : [];
+  const chatHypeScore = strongestChat ? evidenceNumber(strongestChat, 'hype_score') : null;
   if (!projectId) return null;
 
   return <section className="card" style={{ marginTop: 18 }}>
@@ -93,6 +107,12 @@ export function SourceCandidateBrowser({ projectId }: { projectId?: string }) {
       {summary.strongest_events.length > 0 && <p style={{ marginTop: 10, opacity: 0.85 }}>
         <strong>Top signal:</strong> {formatTime(summary.strongest_events[0].start_seconds)}–{formatTime(summary.strongest_events[0].end_seconds)} · {titleCase(summary.strongest_events[0].event_type)} · intensity {summary.strongest_events[0].intensity}
       </p>}
+      {strongestChat && <div className="card" style={{ marginTop: 10, marginBottom: 0 }}>
+        <strong>What chat reacted to</strong>
+        <p style={{ margin: '6px 0 0' }}>{formatTime(strongestChat.start_seconds)}–{formatTime(strongestChat.end_seconds)} · intensity {strongestChat.intensity}{chatHypeScore !== null ? ` · hype score ${chatHypeScore}` : ''}</p>
+        {chatTerms.length > 0 && <div className="button-row" style={{ marginTop: 8 }}>{chatTerms.map((term) => <span className="badge" key={term}>{titleCase(term)}</span>)}</div>}
+        {chatSamples.length > 0 && <div style={{ marginTop: 8 }}>{chatSamples.slice(0, 3).map((sample, index) => <p key={`${sample}-${index}`} style={{ margin: '4px 0', opacity: 0.82 }}>“{sample}”</p>)}</div>}
+      </div>}
     </div>}
     {ranked.length > 0 && <div style={{ display: 'grid', gap: 8, marginTop: 12 }}>
       {ranked.map((candidate) => <div key={candidate.candidate_id} className="card" style={{ margin: 0 }}>
