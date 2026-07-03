@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from database import get_db
+from gamesense_audio import analyze_audio_spikes
 from gamesense_engine import GameSignal, build_gamesense_moments
 from models import CandidateClip, GameSenseEvent, Project, Source
 
@@ -25,6 +26,10 @@ class GameSenseEventCreate(BaseModel):
 
 class GameSenseEventBatchCreate(BaseModel):
     events: list[GameSenseEventCreate] = Field(min_length=1, max_length=5000)
+
+
+class AudioDetectionRequest(BaseModel):
+    replace_existing: bool = False
 
 
 def serialize_event(event: GameSenseEvent) -> dict:
@@ -73,6 +78,75 @@ def resolve_source_id(db: Session, project_id: str, requested_source_id: str | N
         .first()
     )
     return source.id if source else None
+
+
+@router.post("/sources/{source_id}/gamesense/detect/audio")
+def detect_gamesense_audio(source_id: str, payload: AudioDetectionRequest, db: Session = Depends(get_db)):
+    """Detect high-energy audio windows in a local source with FFmpeg astats."""
+    source = db.get(Source, source_id)
+    if source is None:
+        raise HTTPException(status_code=404, detail="source_not_found")
+    if not source.storage_path:
+        raise HTTPException(status_code=400, detail="source_media_not_available")
+
+    existing_query = db.query(GameSenseEvent).filter(
+        GameSenseEvent.source_id == source.id,
+        GameSenseEvent.event_type == "audio_spike",
+        GameSenseEvent.modality == "audio",
+    )
+    existing = existing_query.order_by(GameSenseEvent.start_seconds.asc()).all()
+    if existing and not payload.replace_existing:
+        return {
+            "source_id": source.id,
+            "project_id": source.project_id,
+            "detector": "ffmpeg_astats_audio_spike_v1",
+            "created_count": 0,
+            "events": [serialize_event(event) for event in existing],
+            "message": "Existing automatic audio spike events returned. Send replace_existing=true to recalculate.",
+        }
+    if existing:
+        for event in existing:
+            db.delete(event)
+        db.flush()
+
+    try:
+        spikes = analyze_audio_spikes(source.storage_path)
+    except FileNotFoundError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    except RuntimeError as error:
+        raise HTTPException(status_code=422, detail={"audio_detection_failed": str(error)}) from error
+
+    created: list[GameSenseEvent] = []
+    for spike in spikes:
+        event = GameSenseEvent(
+            id=str(uuid4()),
+            project_id=source.project_id,
+            source_id=source.id,
+            event_type="audio_spike",
+            modality="audio",
+            start_seconds=spike.start_seconds,
+            end_seconds=spike.end_seconds,
+            confidence=spike.confidence,
+            intensity=spike.intensity,
+            evidence={
+                "detector": "ffmpeg_astats_audio_spike_v1",
+                "peak_rms_db": spike.peak_db,
+                "baseline_rms_db": spike.baseline_db,
+            },
+        )
+        db.add(event)
+        created.append(event)
+
+    db.commit()
+    for event in created:
+        db.refresh(event)
+    return {
+        "source_id": source.id,
+        "project_id": source.project_id,
+        "detector": "ffmpeg_astats_audio_spike_v1",
+        "created_count": len(created),
+        "events": [serialize_event(event) for event in created],
+    }
 
 
 @router.post("/projects/{project_id}/gamesense/events")
