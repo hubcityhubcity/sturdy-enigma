@@ -1,19 +1,26 @@
-"""Platform-neutral chat burst detection for Titan GameSense.
+"""Platform-neutral chat spike detection for Titan GameSense.
 
 Adapters for Twitch, Kick, YouTube, or downloaded VOD chat only need to normalize their
 messages into ``ChatMessage`` values. This module finds message-density bursts and adds
-lightweight hype-context evidence without claiming to understand the game itself.
+hype-context evidence without claiming to understand the game itself.
 """
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
-from statistics import median
 
 
 HYPE_TOKENS = {
-    "w", "ws", "wow", "omg", "gg", "ggez", "letsgo", "let'sgo", "clip", "clipped",
-    "insane", "crazy", "goat", "wtf", "lfg", "fire", "holy", "nah", "no way",
+    "w", "ws", "wow", "omg", "gg", "ggez", "letsgo", "let'sgo", "lfg", "clip",
+    "clipped", "insane", "crazy", "goat", "wtf", "fire", "holy", "nah", "bro",
+    "rip", "dead", "sheesh", "yooo", "nooo", "pog", "poggers", "kappa", "lul",
+    "omegalul", "monkas", "wutface", "ez",
+}
+
+CLIP_PHRASES = {
+    "clip that", "clip it", "somebody clip", "someone clip", "no way", "holy shit",
+    "oh my god", "what the hell", "that was insane", "let's go", "lets go",
 }
 
 
@@ -34,22 +41,52 @@ class ChatSpike:
     messages_per_second: float
     baseline_messages_per_second: float
     hype_message_count: int
+    hype_score: int
+    top_terms: list[str]
+    sample_messages: list[str]
 
 
-def normalize_token(text: str) -> str:
+def normalize_text(text: str) -> str:
     return " ".join((text or "").lower().replace("_", " ").split())
 
 
-def is_hype_message(text: str) -> bool:
-    normalized = normalize_token(text)
+def normalize_token(token: str) -> str:
+    return re.sub(r"[^a-z0-9']+", "", token.lower())
+
+
+def hype_terms_for_message(text: str) -> list[str]:
+    normalized = normalize_text(text)
     if not normalized:
-        return False
+        return []
+
+    terms: list[str] = []
     compact = normalized.replace(" ", "")
-    return any(token in normalized.split() or token in compact for token in HYPE_TOKENS)
+    for phrase in CLIP_PHRASES:
+        if phrase in normalized:
+            terms.append(phrase.replace(" ", "_"))
+
+    for raw_token in normalized.split():
+        token = normalize_token(raw_token)
+        if not token:
+            continue
+        if token in HYPE_TOKENS or token in compact and token in {"letsgo", "noway", "clipthat"}:
+            terms.append(token)
+        if len(token) >= 3 and len(set(token)) == 1:
+            terms.append(f"{token[0]}_spam")
+
+    return terms
+
+
+def is_hype_message(text: str) -> bool:
+    return bool(hype_terms_for_message(text))
 
 
 def clamp_intensity(value: float) -> int:
     return max(0, min(100, round(value)))
+
+
+def top_terms(terms: list[str], limit: int = 8) -> list[str]:
+    return sorted(set(terms), key=lambda term: (-terms.count(term), term))[:limit]
 
 
 def detect_chat_spikes(
@@ -60,12 +97,12 @@ def detect_chat_spikes(
     relative_multiplier: float = 2.5,
     merge_gap_seconds: float = 3.0,
 ) -> list[ChatSpike]:
-    """Find unusually dense, short chat bursts.
+    """Find unusually dense, short chat bursts with clip-worthy language.
 
-    A candidate window must clear both a minimum absolute rate and a dynamic baseline
-    threshold. This prevents busy channels from treating ordinary chat as a highlight.
+    A candidate window must clear both an absolute rate and a dynamic baseline rate.
+    Hype phrases raise confidence and intensity but density still matters.
     """
-    ordered = sorted((item for item in messages if item.seconds >= 0), key=lambda item: item.seconds)
+    ordered = sorted((item for item in messages if item.seconds >= 0 and item.text.strip()), key=lambda item: item.seconds)
     if len(ordered) < min_messages:
         return []
 
@@ -102,14 +139,16 @@ def detect_chat_spikes(
         deduped: dict[tuple[float, str, str | None], ChatMessage] = {
             (item.seconds, item.text, item.author): item for item in unique_messages
         }
-        messages_in_spike = list(deduped.values())
+        messages_in_spike = sorted(deduped.values(), key=lambda item: item.seconds)
         duration = max(1.0, end - start)
         rate = len(messages_in_spike) / duration
-        hype_count = sum(is_hype_message(message.text) for message in messages_in_spike)
+        terms = [term for message in messages_in_spike for term in hype_terms_for_message(message.text)]
+        hype_count = sum(1 for message in messages_in_spike if hype_terms_for_message(message.text))
+        hype_score = len(terms) * 3 + sum(4 for term in terms if term in {"clip_that", "clip_it", "somebody_clip", "someone_clip"})
         rate_lift = rate / max(0.1, baseline_rate)
         hype_ratio = hype_count / max(1, len(messages_in_spike))
-        intensity = clamp_intensity(35 + (rate_lift * 12) + (hype_ratio * 28) + min(20, len(messages_in_spike)))
-        confidence = min(0.98, 0.5 + min(0.28, rate_lift / 10) + min(0.16, hype_ratio * 0.3) + min(0.08, len(messages_in_spike) / 100))
+        intensity = clamp_intensity(35 + (rate_lift * 12) + (hype_ratio * 28) + min(20, len(messages_in_spike)) + min(12, hype_score / 3))
+        confidence = min(0.98, 0.5 + min(0.28, rate_lift / 10) + min(0.16, hype_ratio * 0.3) + min(0.08, len(messages_in_spike) / 100) + min(0.06, hype_score / 200))
         spikes.append(ChatSpike(
             start_seconds=round(start, 3),
             end_seconds=round(end + 0.5, 3),
@@ -119,6 +158,9 @@ def detect_chat_spikes(
             messages_per_second=round(rate, 3),
             baseline_messages_per_second=round(baseline_rate, 3),
             hype_message_count=hype_count,
+            hype_score=hype_score,
+            top_terms=top_terms(terms),
+            sample_messages=[message.text for message in messages_in_spike[:5]],
         ))
 
     return spikes
