@@ -10,6 +10,7 @@ from models import GameSenseEvent, Source
 
 
 router = APIRouter(tags=["gamesense"])
+CHAT_DETECTOR = "chat_burst_v1"
 
 
 class ChatMessageInput(BaseModel):
@@ -38,6 +39,14 @@ def serialize_event(event: GameSenseEvent) -> dict:
     }
 
 
+def automatic_chat_events(events: list[GameSenseEvent]) -> list[GameSenseEvent]:
+    """Keep automatic detector events separate from manually supplied chat evidence."""
+    return [
+        event for event in events
+        if isinstance(event.evidence, dict) and event.evidence.get("detector") == CHAT_DETECTOR
+    ]
+
+
 @router.post("/sources/{source_id}/gamesense/detect/chat")
 def detect_gamesense_chat(source_id: str, payload: ChatDetectionRequest, db: Session = Depends(get_db)):
     """Detect chat explosions from normalized, timestamped stream-chat messages."""
@@ -45,18 +54,22 @@ def detect_gamesense_chat(source_id: str, payload: ChatDetectionRequest, db: Ses
     if source is None:
         raise HTTPException(status_code=404, detail="source_not_found")
 
-    existing_query = db.query(GameSenseEvent).filter(
-        GameSenseEvent.source_id == source.id,
-        GameSenseEvent.event_type == "chat_spike",
-        GameSenseEvent.modality == "chat",
-        GameSenseEvent.evidence["detector"].as_string() == "chat_burst_v1",
+    source_chat_events = (
+        db.query(GameSenseEvent)
+        .filter(
+            GameSenseEvent.source_id == source.id,
+            GameSenseEvent.event_type == "chat_spike",
+            GameSenseEvent.modality == "chat",
+        )
+        .order_by(GameSenseEvent.start_seconds.asc())
+        .all()
     )
-    existing = existing_query.order_by(GameSenseEvent.start_seconds.asc()).all()
+    existing = automatic_chat_events(source_chat_events)
     if existing and not payload.replace_existing:
         return {
             "source_id": source.id,
             "project_id": source.project_id,
-            "detector": "chat_burst_v1",
+            "detector": CHAT_DETECTOR,
             "created_count": 0,
             "events": [serialize_event(event) for event in existing],
             "message": "Existing automatic chat spike events returned. Send replace_existing=true to recalculate.",
@@ -81,7 +94,7 @@ def detect_gamesense_chat(source_id: str, payload: ChatDetectionRequest, db: Ses
             confidence=spike.confidence,
             intensity=spike.intensity,
             evidence={
-                "detector": "chat_burst_v1",
+                "detector": CHAT_DETECTOR,
                 "message_count": spike.message_count,
                 "messages_per_second": spike.messages_per_second,
                 "baseline_messages_per_second": spike.baseline_messages_per_second,
@@ -97,7 +110,7 @@ def detect_gamesense_chat(source_id: str, payload: ChatDetectionRequest, db: Ses
     return {
         "source_id": source.id,
         "project_id": source.project_id,
-        "detector": "chat_burst_v1",
+        "detector": CHAT_DETECTOR,
         "created_count": len(created),
         "events": [serialize_event(event) for event in created],
     }
