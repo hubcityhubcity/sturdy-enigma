@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from database import get_db
+from gamesense_analysis_routes import router as gamesense_analysis_router
 from gamesense_chat_routes import router as gamesense_chat_router
 from gamesense_routes import router as gamesense_router
 from gamesense_visual_routes import router as gamesense_visual_router
@@ -12,6 +13,7 @@ router = APIRouter()
 router.include_router(gamesense_router)
 router.include_router(gamesense_chat_router)
 router.include_router(gamesense_visual_router)
+router.include_router(gamesense_analysis_router)
 
 
 def serialize_candidate(candidate: CandidateClip) -> dict:
@@ -41,7 +43,6 @@ def find_matching_segment(db: Session, candidate: CandidateClip) -> TranscriptSe
     )
     if transcript is None:
         return None
-
     return (
         db.query(TranscriptSegment)
         .filter(
@@ -71,7 +72,6 @@ def rescore_project_candidates(project_id: str, db: Session = Depends(get_db)):
     candidates = db.query(CandidateClip).filter(CandidateClip.project_id == project_id).all()
     if not candidates:
         raise HTTPException(status_code=404, detail="candidates_not_found")
-
     updated = []
     for candidate in candidates:
         segment = find_matching_segment(db, candidate)
@@ -84,11 +84,9 @@ def rescore_project_candidates(project_id: str, db: Session = Depends(get_db)):
         candidate.category = category_from_breakdown(breakdown)
         candidate.explanation = breakdown["overall"]["explanation"]
         updated.append(candidate)
-
     db.commit()
     for candidate in updated:
         db.refresh(candidate)
-
     return {
         "project_id": project_id,
         "updated_count": len(updated),
