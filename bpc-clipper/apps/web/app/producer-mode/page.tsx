@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { ChatEvidenceImporter } from './ChatEvidenceImporter';
 import { ProducerModeClient } from './ProducerModeClient';
 import { SourceCandidateBrowser } from './SourceCandidateBrowser';
 
@@ -21,6 +22,7 @@ export default function ProducerModePage({ searchParams }: { searchParams: { pro
       </section>
 
       <ProducerModeClient projectId={projectId} />
+      <ChatEvidenceImporter projectId={projectId} />
       <SourceCandidateBrowser projectId={projectId} />
     </div>
   );
