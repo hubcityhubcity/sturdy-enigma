@@ -165,7 +165,13 @@ def generate_gamesense_candidates(project_id: str, source_id: str | None = None,
         event_query = event_query.filter(GameSenseEvent.source_id == resolved_source_id)
     events = event_query.order_by(GameSenseEvent.start_seconds.asc()).all()
     if not events:
-        raise HTTPException(status_code=404, detail="gamesense_events_not_found")
+        return {
+            "project_id": project_id,
+            "source_id": resolved_source_id,
+            "generated_count": 0,
+            "candidates": [],
+            "message": "No GameSense evidence exists for this source. Analyze the stream, import chat, or add gameplay evidence before ranking clips.",
+        }
 
     existing_query = db.query(CandidateClip).filter(CandidateClip.project_id == project_id, CandidateClip.category.in_(GAMESENSE_CATEGORIES))
     if resolved_source_id:
