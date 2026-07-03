@@ -1,8 +1,8 @@
 """Deterministic multimodal scoring for gaming-stream moments.
 
-GameSense v1 does not detect gameplay directly. It receives normalized, time-coded
-signals from future adapters (game HUD, audio, chat, facecam, visual, or transcript) and
-combines nearby evidence into clip-ready moments with setup and reaction room.
+GameSense receives normalized, time-coded signals from gameplay, audio, chat, facecam,
+visual analysis, or transcript adapters and combines nearby evidence into clip-ready
+moments with setup and reaction room.
 """
 
 from dataclasses import dataclass
@@ -93,6 +93,8 @@ def category_for(signals: list[GameSignal]) -> str:
             return category
     if "chat_spike" in event_types:
         return "chat_loses_it"
+    if "audio_spike" in event_types:
+        return "reaction_moment"
     if "reaction" in event_types:
         return "reaction_moment"
     return "gameplay_moment"
@@ -104,6 +106,28 @@ def describe(signals: list[GameSignal]) -> str:
     return f"{len(signals)} aligned signal(s): {', '.join(event_types)} across {', '.join(modalities)}."
 
 
+def overlap_ratio(first: GameMoment, second: GameMoment) -> float:
+    """Return overlap normalized by the shorter clip window.
+
+    This is intentionally stricter than raw intersection-over-union because candidate
+    windows are designed with setup and reaction padding. A short candidate mostly
+    contained inside a longer one is almost always a duplicate highlight.
+    """
+    intersection = max(0.0, min(first.end_seconds, second.end_seconds) - max(first.start_seconds, second.start_seconds))
+    shorter_duration = max(0.001, min(first.end_seconds - first.start_seconds, second.end_seconds - second.start_seconds))
+    return intersection / shorter_duration
+
+
+def suppress_near_duplicate_moments(moments: list[GameMoment], minimum_overlap: float = 0.75) -> list[GameMoment]:
+    """Keep the strongest candidate when nearby signals describe the same highlight."""
+    selected: list[GameMoment] = []
+    for moment in sorted(moments, key=lambda item: (-item.score, item.start_seconds, item.end_seconds)):
+        if any(overlap_ratio(moment, kept) >= minimum_overlap for kept in selected):
+            continue
+        selected.append(moment)
+    return sorted(selected, key=lambda item: (-item.score, item.start_seconds))
+
+
 def build_gamesense_moments(
     signals: Iterable[GameSignal],
     setup_seconds: float = 8.0,
@@ -113,13 +137,12 @@ def build_gamesense_moments(
 ) -> list[GameMoment]:
     """Fuse nearby cross-modal signals into ranked gaming clip candidates.
 
-    The anchor determines a centered event window. Nearby evidence raises score, while
-    diversity across modalities earns a bonus because a gameplay event plus a real
-    reaction is stronger evidence than repeated signals from only one source.
+    Each signal can anchor a candidate, but overlapping candidates are collapsed so a
+    clutch plus scream plus chat burst becomes one clean highlight rather than four
+    slightly different versions of the same clip.
     """
     ordered = sorted(signals, key=lambda item: (item.start_seconds, item.end_seconds))
     moments: list[GameMoment] = []
-    used_fingerprints: set[tuple[float, float, str]] = set()
 
     for anchor in ordered:
         nearby = [signal for signal in ordered if signals_overlap_window(anchor, signal, fusion_window_seconds)]
@@ -131,20 +154,17 @@ def build_gamesense_moments(
             raw_score += 10
 
         score = clamp(raw_score)
-        category = category_for(nearby)
+        if score < min_score:
+            continue
         start = max(0.0, round(anchor.start_seconds - setup_seconds, 3))
         end = round(max(anchor.end_seconds, max(signal.end_seconds for signal in nearby)) + reaction_seconds, 3)
-        fingerprint = (start, end, category)
-        if score < min_score or fingerprint in used_fingerprints:
-            continue
-        used_fingerprints.add(fingerprint)
         moments.append(GameMoment(
             start_seconds=start,
             end_seconds=end,
             score=score,
-            category=category,
+            category=category_for(nearby),
             explanation=describe(nearby),
             evidence=nearby,
         ))
 
-    return sorted(moments, key=lambda moment: (-moment.score, moment.start_seconds))
+    return suppress_near_duplicate_moments(moments)
