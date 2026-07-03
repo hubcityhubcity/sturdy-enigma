@@ -2,10 +2,12 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from database import get_db
+from gamesense_routes import router as gamesense_router
 from models import CandidateClip, Transcript, TranscriptSegment
 from scoring_engine import score_segment
 
 router = APIRouter()
+router.include_router(gamesense_router)
 
 
 def serialize_candidate(candidate: CandidateClip) -> dict:
