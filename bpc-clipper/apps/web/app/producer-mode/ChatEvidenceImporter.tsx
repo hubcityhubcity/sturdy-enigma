@@ -1,9 +1,13 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { ChatMessageInput, Source, detectGameSenseChat, listSources } from '../../lib/api';
+import { ChatMessageInput, Source, detectGameSenseChat, generateGameSenseCandidates, listSources } from '../../lib/api';
 
-const example = `[\n  { "seconds": 120.2, "author": "viewer1", "text": "NO WAY" },\n  { "seconds": 120.8, "author": "viewer2", "text": "SOMEBODY CLIP THAT" },\n  { "seconds": 121.1, "author": "viewer3", "text": "W" }\n]`;
+const example = `[
+  { "seconds": 120.2, "author": "viewer1", "text": "NO WAY" },
+  { "seconds": 120.8, "author": "viewer2", "text": "SOMEBODY CLIP THAT" },
+  { "seconds": 121.1, "author": "viewer3", "text": "W" }
+]`;
 
 function sourceLabel(source: Source) {
   return source.title || source.original_filename || source.original_url || `Source ${source.source_id.slice(0, 8)}`;
@@ -19,6 +23,10 @@ function normalizeMessages(value: unknown): ChatMessageInput[] {
     if (row.author !== undefined && row.author !== null && typeof row.author !== 'string') throw new Error(`Chat row ${index + 1} author must be text when provided.`);
     return { seconds: row.seconds, text: row.text, author: typeof row.author === 'string' ? row.author : null };
   });
+}
+
+function notifyEvidenceUpdated(sourceId: string) {
+  window.dispatchEvent(new CustomEvent('gamesense-evidence-updated', { detail: { sourceId } }));
 }
 
 export function ChatEvidenceImporter({ projectId }: { projectId?: string }) {
@@ -51,9 +59,26 @@ export function ChatEvidenceImporter({ projectId }: { projectId?: string }) {
     try {
       const messages = normalizeMessages(JSON.parse(rawJson));
       const result = await detectGameSenseChat(sourceId, messages, true);
-      setStatus(result.created_count ? `Imported chat evidence and found ${result.created_count} chat spike(s). Generate GameSense clips to include them in ranking.` : 'Chat was imported, but no burst was strong enough to become a spike.');
+      notifyEvidenceUpdated(sourceId);
+      setStatus(result.created_count ? `Imported chat evidence and found ${result.created_count} chat spike(s).` : 'Chat was imported, but no burst was strong enough to become a spike.');
     } catch (caught) {
       setStatus(caught instanceof Error ? caught.message : 'Unable to import chat evidence.');
+    } finally {
+      setIsImporting(false);
+    }
+  }
+
+  async function importAndGenerateClips() {
+    if (!projectId || !sourceId) { setStatus('Select a source first.'); return; }
+    setIsImporting(true); setStatus('Analyzing chat and ranking GameSense clips...');
+    try {
+      const messages = normalizeMessages(JSON.parse(rawJson));
+      const chatResult = await detectGameSenseChat(sourceId, messages, true);
+      const clipResult = await generateGameSenseCandidates(projectId, sourceId, true);
+      notifyEvidenceUpdated(sourceId);
+      setStatus(`Chat analysis found ${chatResult.created_count} spike(s) and generated ${clipResult.generated_count} GameSense clip candidate(s).`);
+    } catch (caught) {
+      setStatus(caught instanceof Error ? caught.message : 'Unable to analyze chat and generate clips.');
     } finally {
       setIsImporting(false);
     }
@@ -76,7 +101,8 @@ export function ChatEvidenceImporter({ projectId }: { projectId?: string }) {
     </label>
     <div className="button-row" style={{ marginTop: 10 }}>
       <button className="button secondary" type="button" onClick={() => setRawJson(example)} disabled={isImporting}>Load Example</button>
-      <button className="button" type="button" onClick={importChatEvidence} disabled={!sourceId || isImporting}>{isImporting ? 'Analyzing Chat...' : 'Analyze Chat Burst'}</button>
+      <button className="button secondary" type="button" onClick={importChatEvidence} disabled={!sourceId || isImporting}>{isImporting ? 'Working...' : 'Analyze Chat Burst'}</button>
+      <button className="button" type="button" onClick={importAndGenerateClips} disabled={!sourceId || isImporting}>{isImporting ? 'Working...' : 'Analyze Chat + Find Clips'}</button>
     </div>
     {status && <p style={{ marginTop: 10 }}>{status}</p>}
   </section>;
