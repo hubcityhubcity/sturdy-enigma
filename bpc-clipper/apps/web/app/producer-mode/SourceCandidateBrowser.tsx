@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Candidate, Source, listSourceCandidates, listSources } from '../../lib/api';
+import { Candidate, GameSenseSummary, Source, getGameSenseSummary, listSourceCandidates, listSources } from '../../lib/api';
 
 function sourceLabel(source: Source) {
   return source.title || source.original_filename || source.original_url || `Source ${source.source_id.slice(0, 8)}`;
@@ -11,10 +11,15 @@ function formatTime(seconds: number) {
   return `${Math.floor(seconds / 60).toString().padStart(2, '0')}:${Math.floor(seconds % 60).toString().padStart(2, '0')}`;
 }
 
+function titleCase(value: string) {
+  return value.replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
 export function SourceCandidateBrowser({ projectId }: { projectId?: string }) {
   const [sources, setSources] = useState<Source[]>([]);
   const [sourceId, setSourceId] = useState('');
   const [candidates, setCandidates] = useState<Candidate[]>([]);
+  const [summary, setSummary] = useState<GameSenseSummary | null>(null);
   const [status, setStatus] = useState('');
 
   useEffect(() => {
@@ -36,20 +41,24 @@ export function SourceCandidateBrowser({ projectId }: { projectId?: string }) {
   }, [projectId]);
 
   useEffect(() => {
-    if (!projectId || !sourceId) { setCandidates([]); return; }
+    if (!projectId || !sourceId) { setCandidates([]); setSummary(null); return; }
     let cancelled = false;
-    async function loadCandidates() {
-      setStatus('Loading saved clips for this source...');
+    async function loadSourceReview() {
+      setStatus('Loading saved clips and evidence for this source...');
       try {
-        const result = await listSourceCandidates(projectId, sourceId);
+        const [candidateResult, evidenceResult] = await Promise.all([
+          listSourceCandidates(projectId, sourceId),
+          getGameSenseSummary(projectId, sourceId),
+        ]);
         if (cancelled) return;
-        setCandidates(result.candidates);
-        setStatus(result.candidates.length ? `${result.candidates.length} saved clip candidate(s).` : 'No saved clips for this source yet.');
+        setCandidates(candidateResult.candidates);
+        setSummary(evidenceResult);
+        setStatus(candidateResult.candidates.length ? `${candidateResult.candidates.length} saved clip candidate(s).` : 'No saved clips for this source yet.');
       } catch (caught) {
         if (!cancelled) setStatus(caught instanceof Error ? caught.message : 'Unable to load saved clips.');
       }
     }
-    loadCandidates();
+    loadSourceReview();
     return () => { cancelled = true; };
   }, [projectId, sourceId]);
 
@@ -58,7 +67,7 @@ export function SourceCandidateBrowser({ projectId }: { projectId?: string }) {
 
   return <section className="card" style={{ marginTop: 18 }}>
     <h2>Saved clips by source</h2>
-    <p style={{ opacity: 0.8 }}>Browse previously generated candidates without rerunning analysis.</p>
+    <p style={{ opacity: 0.8 }}>Browse previous candidates and the evidence Titan used for this specific source.</p>
     <label style={{ display: 'grid', gap: 6, marginTop: 10 }}>
       <strong>Source</strong>
       <select value={sourceId} onChange={(event) => setSourceId(event.target.value)} disabled={!sources.length}>
@@ -67,6 +76,14 @@ export function SourceCandidateBrowser({ projectId }: { projectId?: string }) {
       </select>
     </label>
     {status && <p style={{ marginTop: 10 }}>{status}</p>}
+    {summary && <div style={{ marginTop: 12 }}>
+      <div className="button-row">
+        {Object.entries(summary.modality_counts).filter(([, count]) => count > 0).map(([modality, count]) => <span className="badge" key={modality}>{titleCase(modality)}: {count}</span>)}
+      </div>
+      {summary.strongest_events.length > 0 && <p style={{ marginTop: 10, opacity: 0.85 }}>
+        <strong>Top signal:</strong> {formatTime(summary.strongest_events[0].start_seconds)}–{formatTime(summary.strongest_events[0].end_seconds)} · {titleCase(summary.strongest_events[0].event_type)} · intensity {summary.strongest_events[0].intensity}
+      </p>}
+    </div>}
     {ranked.length > 0 && <div style={{ display: 'grid', gap: 8, marginTop: 12 }}>
       {ranked.map((candidate) => <div key={candidate.candidate_id} className="card" style={{ margin: 0 }}>
         <strong>{candidate.score} · {candidate.title}</strong>
