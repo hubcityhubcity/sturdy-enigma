@@ -11,6 +11,7 @@ import {
   createEditTimeline,
   createExport,
   generateCandidates,
+  generateGameSenseCandidates,
   getExport,
   getRenderJob,
   listCandidates,
@@ -21,16 +22,9 @@ import {
 
 const fallbackCandidates: Candidate[] = [
   {
-    candidate_id: 'fallback-1',
-    project_id: 'demo',
-    start_seconds: 120,
-    end_seconds: 164,
-    title: 'Strong opening debate moment',
-    excerpt: 'This clip starts with immediate tension, gives enough context, and lands with a clear payoff.',
-    score: 88,
-    category: 'debate_heat',
-    explanation: 'Strong hook, clear contrast, clean payoff, low context risk.',
-    risk_flags: [],
+    candidate_id: 'fallback-1', project_id: 'demo', start_seconds: 120, end_seconds: 164,
+    title: 'Strong opening debate moment', excerpt: 'This clip starts with immediate tension, gives enough context, and lands with a clear payoff.',
+    score: 88, category: 'debate_heat', explanation: 'Strong hook, clear contrast, clean payoff, low context risk.', risk_flags: [],
     score_breakdown: {
       hook: { name: 'hook', score: 92, explanation: 'Strong opening tension.' },
       curiosity: { name: 'curiosity', score: 86, explanation: 'Creates a clear open loop.' },
@@ -40,51 +34,15 @@ const fallbackCandidates: Candidate[] = [
       retention: { name: 'retention', score: 84, explanation: 'Good short-form length and pace.' },
     },
   },
-  {
-    candidate_id: 'fallback-2',
-    project_id: 'demo',
-    start_seconds: 442,
-    end_seconds: 489,
-    title: 'Story mode clip',
-    excerpt: 'A clear story arc with setup, emotion, and a practical takeaway.',
-    score: 81,
-    category: 'story_mode',
-    explanation: 'Good narrative structure and emotional clarity.',
-    risk_flags: [],
-    score_breakdown: {
-      hook: { name: 'hook', score: 74, explanation: 'Solid opening.' },
-      curiosity: { name: 'curiosity', score: 76, explanation: 'Leaves room for payoff.' },
-      emotion: { name: 'emotion', score: 82, explanation: 'Emotional language is present.' },
-      debate: { name: 'debate', score: 35, explanation: 'Low conflict.' },
-      story: { name: 'story', score: 92, explanation: 'Strong story structure.' },
-      retention: { name: 'retention', score: 80, explanation: 'Good duration for shorts.' },
-    },
-  },
 ];
 
 const scoreOrder: Array<keyof ScoreBreakdown> = ['hook', 'curiosity', 'emotion', 'debate', 'story', 'retention'];
+const scoreLabels: Record<string, string> = { hook: 'Hook', curiosity: 'Curiosity', emotion: 'Emotion', debate: 'Debate', story: 'Story', retention: 'Retention', overall: 'Overall' };
 
-const scoreLabels: Record<string, string> = {
-  hook: 'Hook',
-  curiosity: 'Curiosity',
-  emotion: 'Emotion',
-  debate: 'Debate',
-  story: 'Story',
-  retention: 'Retention',
-  overall: 'Overall',
-};
-
-type CandidateWorkflowState = {
-  status: string;
-  exportRecord?: ExportRecord;
-  renderJob?: RenderJob;
-  error?: string;
-};
+type CandidateWorkflowState = { status: string; exportRecord?: ExportRecord; renderJob?: RenderJob; error?: string };
 
 function formatTime(seconds: number) {
-  const minutes = Math.floor(seconds / 60).toString().padStart(2, '0');
-  const remainingSeconds = Math.floor(seconds % 60).toString().padStart(2, '0');
-  return `${minutes}:${remainingSeconds}`;
+  return `${Math.floor(seconds / 60).toString().padStart(2, '0')}:${Math.floor(seconds % 60).toString().padStart(2, '0')}`;
 }
 
 function formatCategory(category: string) {
@@ -114,20 +72,29 @@ function ScoreSignalRow({ signal }: { signal: ScoreSignal }) {
 }
 
 function ScoreBreakdownPanel({ breakdown }: { breakdown?: ScoreBreakdown }) {
-  const signals = scoreOrder
-    .map((key) => breakdown?.[key])
-    .filter(Boolean) as ScoreSignal[];
+  const signals = scoreOrder.map((key) => breakdown?.[key]).filter(Boolean) as ScoreSignal[];
+  const gameEvidence = breakdown?.engine === 'gamesense_v1' ? breakdown.evidence || [] : [];
 
-  if (!signals.length) {
-    return <p><strong>Titan Brain:</strong> Score breakdown not available yet. Rescore this project after running migrations.</p>;
+  if (gameEvidence.length) {
+    return (
+      <div className="card" style={{ marginTop: 12 }}>
+        <h3>Titan GameSense</h3>
+        {breakdown?.overall && <p><strong>Moment score:</strong> {breakdown.overall.score} — {breakdown.overall.explanation}</p>}
+        <p><strong>Aligned evidence:</strong> {gameEvidence.length} signal(s)</p>
+        {gameEvidence.map((signal, index) => (
+          <p key={`${signal.event_type}-${index}`} style={{ margin: '6px 0', opacity: 0.9 }}>
+            {formatCategory(signal.event_type)} · {formatCategory(signal.modality)} · intensity {signal.intensity}
+          </p>
+        ))}
+      </div>
+    );
   }
 
+  if (!signals.length) return <p><strong>Titan Brain:</strong> Score breakdown not available yet. Rescore this project after running migrations.</p>;
   return (
     <div className="card" style={{ marginTop: 12 }}>
       <h3>Titan Brain</h3>
-      {breakdown?.overall && (
-        <p><strong>Overall:</strong> {breakdown.overall.score} — {breakdown.overall.explanation}</p>
-      )}
+      {breakdown?.overall && <p><strong>Overall:</strong> {breakdown.overall.score} — {breakdown.overall.explanation}</p>}
       {signals.map((signal) => <ScoreSignalRow key={signal.name} signal={signal} />)}
     </div>
   );
@@ -138,7 +105,6 @@ function ExportLinks({ exportRecord }: { exportRecord: ExportRecord }) {
   const srtUrl = absoluteApiUrl(exportRecord.download_urls?.srt);
   const vttUrl = absoluteApiUrl(exportRecord.download_urls?.vtt);
   const metadataUrl = absoluteApiUrl(exportRecord.download_urls?.metadata);
-
   return (
     <div className="button-row" style={{ marginTop: 10 }}>
       {videoUrl && <a className="button" href={videoUrl} target="_blank" rel="noreferrer">Open MP4</a>}
@@ -155,53 +121,38 @@ export function ProducerModeClient({ projectId }: { projectId?: string }) {
   const [error, setError] = useState('');
   const [workflowByCandidate, setWorkflowByCandidate] = useState<Record<string, CandidateWorkflowState>>({});
   const [isRescoring, setIsRescoring] = useState(false);
+  const [isGeneratingGameSense, setIsGeneratingGameSense] = useState(false);
 
-  const sortedCandidates = useMemo(
-    () => [...candidates].sort((a, b) => b.score - a.score),
-    [candidates]
-  );
+  const sortedCandidates = useMemo(() => [...candidates].sort((a, b) => b.score - a.score), [candidates]);
 
   useEffect(() => {
     async function loadCandidates() {
       if (!projectId) return;
-
       try {
         const existing = await listCandidates(projectId);
-        if (existing.candidates.length > 0) {
+        if (existing.candidates.length) {
           setCandidates(existing.candidates);
           setStatus('Loaded project candidates.');
           return;
         }
-
         const generated = await generateCandidates(projectId);
         setCandidates(generated.candidates);
-        setStatus('Generated fresh candidates.');
+        setStatus('Generated fresh transcript candidates.');
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : 'Unable to load candidates.');
         setStatus('Showing demo candidates because the API did not respond.');
       }
     }
-
     loadCandidates();
   }, [projectId]);
 
   function updateWorkflow(candidateId: string, next: CandidateWorkflowState) {
-    setWorkflowByCandidate((current) => ({
-      ...current,
-      [candidateId]: next,
-    }));
+    setWorkflowByCandidate((current) => ({ ...current, [candidateId]: next }));
   }
 
   async function rescoreProject() {
-    if (!projectId) {
-      setStatus('Create a real project first to rescore candidates.');
-      return;
-    }
-
-    setIsRescoring(true);
-    setError('');
-    setStatus('Rescoring candidates with Titan Brain...');
-
+    if (!projectId) return setStatus('Create a real project first to rescore candidates.');
+    setIsRescoring(true); setError(''); setStatus('Rescoring candidates with Titan Brain...');
     try {
       const result = await rescoreCandidates(projectId);
       setCandidates(result.candidates);
@@ -214,112 +165,63 @@ export function ProducerModeClient({ projectId }: { projectId?: string }) {
     }
   }
 
+  async function generateGameSense() {
+    if (!projectId) return setStatus('Create a real gaming project first to generate GameSense clips.');
+    setIsGeneratingGameSense(true); setError(''); setStatus('Titan GameSense is fusing gameplay, audio, chat, and reaction evidence...');
+    try {
+      const result = await generateGameSenseCandidates(projectId, undefined, true);
+      if (!result.candidates.length) throw new Error('No strong gaming moments met the GameSense threshold.');
+      setCandidates(result.candidates);
+      setStatus(`Titan GameSense generated ${result.generated_count} gaming candidate(s).`);
+    } catch (caught) {
+      const message = caught instanceof Error ? caught.message : 'Unable to generate GameSense clips.';
+      setError(message);
+      setStatus(message.includes('gamesense_events_not_found')
+        ? 'No GameSense evidence exists yet. Import or detect gameplay, audio, chat, or facecam events first.'
+        : 'GameSense generation failed.');
+    } finally {
+      setIsGeneratingGameSense(false);
+    }
+  }
+
   async function pollRenderJob(candidateId: string, job: RenderJob, exportId: string) {
     let currentJob = job;
     for (let attempt = 0; attempt < 60; attempt += 1) {
       currentJob = await getRenderJob(job.job_id);
       const refreshedExport = await getExport(exportId);
-
-      updateWorkflow(candidateId, {
-        status: `Queued render: ${currentJob.status} (${currentJob.progress}%)`,
-        exportRecord: refreshedExport,
-        renderJob: currentJob,
-      });
-
-      if (currentJob.status === 'complete' || currentJob.status === 'failed') {
-        return { job: currentJob, exportRecord: refreshedExport };
-      }
-
+      updateWorkflow(candidateId, { status: `Queued render: ${currentJob.status} (${currentJob.progress}%)`, exportRecord: refreshedExport, renderJob: currentJob });
+      if (currentJob.status === 'complete' || currentJob.status === 'failed') return { job: currentJob, exportRecord: refreshedExport };
       await sleep(2000);
     }
-
     throw new Error('Render job polling timed out. Worker may not be running.');
   }
 
   async function approveAndQueueRender(candidate: Candidate) {
-    if (!projectId || candidate.project_id === 'demo') {
-      updateWorkflow(candidate.candidate_id, { status: 'Create a real project first to approve and render.' });
-      return;
-    }
-
+    if (!projectId || candidate.project_id === 'demo') return updateWorkflow(candidate.candidate_id, { status: 'Create a real project first to approve and render.' });
     updateWorkflow(candidate.candidate_id, { status: 'Approving candidate...' });
-
     try {
-      const edit = await createEditTimeline(candidate.candidate_id, {
-        hook_text: candidate.excerpt,
-        caption_preset: candidate.category === 'debate_heat' ? 'bpc_debate_heat' : 'bpc_clean_editorial',
-        crop_mode: 'speaker_focus',
-      });
-
-      updateWorkflow(candidate.candidate_id, { status: 'Creating vertical export...' });
-
-      const exportRecord = await createExport(edit.edit_id, {
-        format: 'vertical_1080x1920',
-        include_burned_captions: true,
-        include_srt: true,
-        include_vtt: true,
-        include_metadata: true,
-      });
-
-      updateWorkflow(candidate.candidate_id, {
-        status: 'Queueing render job...',
-        exportRecord,
-      });
-
+      const edit = await createEditTimeline(candidate.candidate_id, { hook_text: candidate.excerpt, caption_preset: candidate.category === 'debate_heat' ? 'bpc_debate_heat' : 'bpc_clean_editorial', crop_mode: 'speaker_focus' });
+      const exportRecord = await createExport(edit.edit_id, { format: 'vertical_1080x1920', include_burned_captions: true, include_srt: true, include_vtt: true, include_metadata: true });
+      updateWorkflow(candidate.candidate_id, { status: 'Queueing render job...', exportRecord });
       const renderJob = await queueRenderExport(exportRecord.export_id);
-      updateWorkflow(candidate.candidate_id, {
-        status: `Queued render: ${renderJob.status} (${renderJob.progress}%)`,
-        exportRecord,
-        renderJob,
-      });
-
       const result = await pollRenderJob(candidate.candidate_id, renderJob, exportRecord.export_id);
-      updateWorkflow(candidate.candidate_id, {
-        status: result.job.status === 'complete' ? 'Render complete.' : 'Render failed.',
-        exportRecord: result.exportRecord,
-        renderJob: result.job,
-        error: result.job.error || undefined,
-      });
+      updateWorkflow(candidate.candidate_id, { status: result.job.status === 'complete' ? 'Render complete.' : 'Render failed.', exportRecord: result.exportRecord, renderJob: result.job, error: result.job.error || undefined });
     } catch (caught) {
-      updateWorkflow(candidate.candidate_id, {
-        status: 'Queued render workflow failed.',
-        error: caught instanceof Error ? caught.message : 'Unable to approve and queue render candidate.',
-      });
+      updateWorkflow(candidate.candidate_id, { status: 'Queued render workflow failed.', error: caught instanceof Error ? caught.message : 'Unable to approve and queue render candidate.' });
     }
   }
 
   async function approveAndRenderNow(candidate: Candidate) {
-    if (!projectId || candidate.project_id === 'demo') {
-      updateWorkflow(candidate.candidate_id, { status: 'Create a real project first to approve and render.' });
-      return;
-    }
-
+    if (!projectId || candidate.project_id === 'demo') return updateWorkflow(candidate.candidate_id, { status: 'Create a real project first to approve and render.' });
     updateWorkflow(candidate.candidate_id, { status: 'Approving candidate for immediate render...' });
-
     try {
-      const edit = await createEditTimeline(candidate.candidate_id, {
-        hook_text: candidate.excerpt,
-        caption_preset: candidate.category === 'debate_heat' ? 'bpc_debate_heat' : 'bpc_clean_editorial',
-        crop_mode: 'speaker_focus',
-      });
-      const exportRecord = await createExport(edit.edit_id, {
-        format: 'vertical_1080x1920',
-        include_burned_captions: true,
-        include_srt: true,
-        include_vtt: true,
-        include_metadata: true,
-      });
+      const edit = await createEditTimeline(candidate.candidate_id, { hook_text: candidate.excerpt, caption_preset: candidate.category === 'debate_heat' ? 'bpc_debate_heat' : 'bpc_clean_editorial', crop_mode: 'speaker_focus' });
+      const exportRecord = await createExport(edit.edit_id, { format: 'vertical_1080x1920', include_burned_captions: true, include_srt: true, include_vtt: true, include_metadata: true });
       updateWorkflow(candidate.candidate_id, { status: 'Rendering immediately...', exportRecord });
       const renderedExport = await renderExport(exportRecord.export_id);
-      updateWorkflow(candidate.candidate_id, {
-        status: `Immediate render finished: ${renderedExport.status}`,
-        exportRecord: renderedExport,
-      });
+      updateWorkflow(candidate.candidate_id, { status: `Immediate render finished: ${renderedExport.status}`, exportRecord: renderedExport });
     } catch (caught) {
-      updateWorkflow(candidate.candidate_id, {
-        status: 'Immediate render failed.',
-        error: caught instanceof Error ? caught.message : 'Unable to render immediately.',
-      });
+      updateWorkflow(candidate.candidate_id, { status: 'Immediate render failed.', error: caught instanceof Error ? caught.message : 'Unable to render immediately.' });
     }
   }
 
@@ -334,7 +236,11 @@ export function ProducerModeClient({ projectId }: { projectId?: string }) {
           <button className="button secondary" type="button" onClick={rescoreProject} disabled={isRescoring || !projectId}>
             {isRescoring ? 'Rescoring...' : 'Rescore with Titan Brain'}
           </button>
+          <button className="button" type="button" onClick={generateGameSense} disabled={isGeneratingGameSense || !projectId}>
+            {isGeneratingGameSense ? 'Finding Gaming Moments...' : 'Generate GameSense Clips'}
+          </button>
         </div>
+        <p style={{ marginTop: 10, opacity: 0.8 }}>GameSense uses imported or detected gameplay, audio, chat, and facecam events. It does not invent stream moments from a transcript.</p>
       </section>
 
       <section style={{ display: 'grid', gap: 18, marginTop: 24 }}>
@@ -342,48 +248,26 @@ export function ProducerModeClient({ projectId }: { projectId?: string }) {
           const workflow = workflowByCandidate[candidate.candidate_id];
           return (
             <article className="card candidate" key={candidate.candidate_id}>
-              <div>
-                <div className="score">{candidate.score}</div>
-                <div className="badge">{formatCategory(candidate.category)}</div>
-              </div>
+              <div><div className="score">{candidate.score}</div><div className="badge">{formatCategory(candidate.category)}</div></div>
               <div>
                 <h2>{candidate.title}</h2>
-                <p>
-                  <strong>Source time:</strong> {formatTime(candidate.start_seconds)} - {formatTime(candidate.end_seconds)}
-                </p>
+                <p><strong>Source time:</strong> {formatTime(candidate.start_seconds)} - {formatTime(candidate.end_seconds)}</p>
                 <p>{candidate.excerpt}</p>
                 <p><strong>Why it ranked:</strong> {candidate.explanation}</p>
                 <ScoreBreakdownPanel breakdown={candidate.score_breakdown} />
-                {candidate.risk_flags.length > 0 && (
-                  <p><strong>Risk flags:</strong> {candidate.risk_flags.join(', ')}</p>
-                )}
+                {candidate.risk_flags.length > 0 && <p><strong>Risk flags:</strong> {candidate.risk_flags.join(', ')}</p>}
                 {workflow && (
                   <div className="card" style={{ marginTop: 12 }}>
                     <p><strong>Workflow:</strong> {workflow.status}</p>
-                    {workflow.renderJob && (
-                      <>
-                        <p><strong>Render Job ID:</strong> {workflow.renderJob.job_id}</p>
-                        <p><strong>Render Job:</strong> {workflow.renderJob.status} / {workflow.renderJob.progress}%</p>
-                      </>
-                    )}
-                    {workflow.exportRecord && (
-                      <>
-                        <p><strong>Export ID:</strong> {workflow.exportRecord.export_id}</p>
-                        <p><strong>Export Status:</strong> {workflow.exportRecord.status}</p>
-                        <ExportLinks exportRecord={workflow.exportRecord} />
-                      </>
-                    )}
+                    {workflow.renderJob && <p><strong>Render Job:</strong> {workflow.renderJob.status} / {workflow.renderJob.progress}%</p>}
+                    {workflow.exportRecord && <><p><strong>Export Status:</strong> {workflow.exportRecord.status}</p><ExportLinks exportRecord={workflow.exportRecord} /></>}
                     {workflow.error && <p style={{ color: '#ff8a8a' }}><strong>Error:</strong> {workflow.error}</p>}
                   </div>
                 )}
               </div>
               <div className="button-row">
-                <button className="button" type="button" onClick={() => approveAndQueueRender(candidate)}>
-                  Approve + Queue Render
-                </button>
-                <button className="button secondary" type="button" onClick={() => approveAndRenderNow(candidate)}>
-                  Render Now
-                </button>
+                <button className="button" type="button" onClick={() => approveAndQueueRender(candidate)}>Approve + Queue Render</button>
+                <button className="button secondary" type="button" onClick={() => approveAndRenderNow(candidate)}>Render Now</button>
               </div>
             </article>
           );
