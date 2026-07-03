@@ -24,6 +24,7 @@ class FakeDb:
         self.source = source
         self.events = events
         self.deleted = []
+        self.added = []
         self.did_flush = False
         self.did_commit = False
 
@@ -40,7 +41,7 @@ class FakeDb:
         self.did_flush = True
 
     def add(self, event):
-        pass
+        self.added.append(event)
 
     def commit(self):
         self.did_commit = True
@@ -75,6 +76,33 @@ class GameSenseChatRouteTests(unittest.TestCase):
         self.assertTrue(db.did_flush)
         self.assertTrue(db.did_commit)
         self.assertEqual(result["created_count"], 0)
+
+    @patch("gamesense_chat_routes.detect_chat_spikes")
+    def test_created_chat_event_preserves_hype_context(self, mock_detect_chat_spikes):
+        mock_detect_chat_spikes.return_value = [SimpleNamespace(
+            start_seconds=120.0,
+            end_seconds=122.5,
+            intensity=93,
+            confidence=0.91,
+            message_count=8,
+            messages_per_second=3.2,
+            baseline_messages_per_second=0.4,
+            hype_message_count=6,
+            hype_score=31,
+            top_terms=["somebody_clip", "w"],
+            sample_messages=["SOMEBODY CLIP THAT", "W"],
+        )]
+        source = SimpleNamespace(id="source-1", project_id="project-1")
+        db = FakeDb(source, [])
+        payload = ChatDetectionRequest(messages=[{"seconds": 120.0, "text": "SOMEBODY CLIP THAT"}])
+
+        result = detect_gamesense_chat("source-1", payload, db)
+
+        self.assertEqual(result["created_count"], 1)
+        evidence = db.added[0].evidence
+        self.assertEqual(evidence["hype_score"], 31)
+        self.assertEqual(evidence["top_terms"], ["somebody_clip", "w"])
+        self.assertEqual(evidence["sample_messages"], ["SOMEBODY CLIP THAT", "W"])
 
 
 if __name__ == "__main__":
