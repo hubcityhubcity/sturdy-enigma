@@ -21,6 +21,7 @@ export function SourceCandidateBrowser({ projectId }: { projectId?: string }) {
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [summary, setSummary] = useState<GameSenseSummary | null>(null);
   const [status, setStatus] = useState('');
+  const [refreshToken, setRefreshToken] = useState(0);
 
   useEffect(() => {
     if (!projectId) return;
@@ -39,6 +40,15 @@ export function SourceCandidateBrowser({ projectId }: { projectId?: string }) {
     loadSources();
     return () => { cancelled = true; };
   }, [projectId]);
+
+  useEffect(() => {
+    function onEvidenceUpdated(event: Event) {
+      const detail = (event as CustomEvent<{ sourceId?: string }>).detail;
+      if (!detail?.sourceId || detail.sourceId === sourceId) setRefreshToken((value) => value + 1);
+    }
+    window.addEventListener('gamesense-evidence-updated', onEvidenceUpdated);
+    return () => window.removeEventListener('gamesense-evidence-updated', onEvidenceUpdated);
+  }, [sourceId]);
 
   useEffect(() => {
     if (!projectId || !sourceId) { setCandidates([]); setSummary(null); return; }
@@ -60,7 +70,7 @@ export function SourceCandidateBrowser({ projectId }: { projectId?: string }) {
     }
     loadSourceReview();
     return () => { cancelled = true; };
-  }, [projectId, sourceId]);
+  }, [projectId, sourceId, refreshToken]);
 
   const ranked = useMemo(() => [...candidates].sort((a, b) => b.score - a.score), [candidates]);
   if (!projectId) return null;
