@@ -11,6 +11,7 @@ export type ScoreBreakdown = { hook?: ScoreSignal; curiosity?: ScoreSignal; emot
 export type Candidate = { candidate_id: string; project_id: string; source_id?: string | null; start_seconds: number; end_seconds: number; title: string; excerpt: string; score: number; category: string; explanation: string; score_breakdown?: ScoreBreakdown; risk_flags: string[]; status?: string };
 export type EditTimeline = { edit_id: string; project_id: string; candidate_clip_id: string; start_seconds: number; end_seconds: number; hook_text?: string | null; caption_preset: string; crop_mode: string; status: string; settings: Record<string, unknown> };
 export type ExportRecord = { export_id: string; project_id: string; edit_timeline_id: string; status: string; format: string; include_burned_captions: boolean; include_srt: boolean; include_vtt: boolean; include_metadata: boolean; video_path?: string | null; srt_path?: string | null; vtt_path?: string | null; metadata_path?: string | null; download_urls?: { video?: string | null; srt?: string | null; vtt?: string | null; metadata?: string | null }; error?: string | null };
+export type PublishingPackage = { export_id: string; candidate_id?: string | null; title_options: string[]; caption_options: string[]; hashtags: string[]; clip_summary: string; duration_seconds: number; publishing_checklist: string[]; recommended_title: string; recommended_caption: string };
 export type RenderJob = { job_id: string; export_id?: string | null; project_id: string; stage: string; progress: number; message: string; status: string; error?: string | null };
 export type GameSenseDetectionResult = { source_id: string; project_id: string; detector: string; created_count: number; events: GameSenseEvent[]; message?: string };
 export type GameSenseStreamAnalysisResult = GameSenseDetectionResult & { summary: { audio_spike_count: number; visual_scene_change_count: number; visual_threshold: number } };
@@ -19,11 +20,7 @@ export type GameSenseCandidateGenerationResult = { project_id: string; source_id
 
 export function absoluteApiUrl(path?: string | null): string | null { if (!path) return null; if (path.startsWith('http://') || path.startsWith('https://')) return path; return `${API_ORIGIN}${path}`; }
 
-async function jsonRequest<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${path}`, options);
-  if (!response.ok) { const message = await response.text(); throw new Error(message || `Request failed: ${response.status}`); }
-  return response.json() as Promise<T>;
-}
+async function jsonRequest<T>(path: string, options: RequestInit = {}): Promise<T> { const response = await fetch(`${API_BASE_URL}${path}`, options); if (!response.ok) { const message = await response.text(); throw new Error(message || `Request failed: ${response.status}`); } return response.json() as Promise<T>; }
 
 export async function createProject(input: { name: string; source_type: 'upload' | 'link' | 'unknown'; rights_confirmed: boolean }): Promise<Project> { return jsonRequest('/projects', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) }); }
 export async function createLinkSource(projectId: string, input: { url: string; rights_confirmed: boolean }): Promise<{ project_id: string; source: Source; job_id: string; status: string }> { return jsonRequest(`/projects/${projectId}/sources/link`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) }); }
@@ -45,3 +42,4 @@ export async function renderExport(exportId: string): Promise<ExportRecord> { re
 export async function queueRenderExport(exportId: string): Promise<RenderJob> { return jsonRequest(`/exports/${exportId}/queue-render`, { method: 'POST' }); }
 export async function getRenderJob(jobId: string): Promise<RenderJob> { return jsonRequest(`/render-jobs/${jobId}`, { cache: 'no-store' }); }
 export async function getExport(exportId: string): Promise<ExportRecord> { return jsonRequest(`/exports/${exportId}`, { cache: 'no-store' }); }
+export async function getPublishingPackage(exportId: string): Promise<PublishingPackage> { return jsonRequest(`/exports/${exportId}/publishing-package`, { cache: 'no-store' }); }
