@@ -18,7 +18,7 @@ class TitanBrainRankingTests(unittest.TestCase):
         self.assertGreater(complete.overall.score, dependent.overall.score)
 
     def test_risk_flags_explain_context_and_payoff_problems(self):
-        breakdown = score_segment(self.segment("But they did it because of that?", duration=8.0)).as_dict()
+        breakdown = score_segment(self.segment("But they did that?", duration=8.0)).as_dict()
         flags = risk_flags_for_breakdown(breakdown)
 
         self.assertIn("context_required", flags)
