@@ -13,10 +13,13 @@ Titan Clipper AI is a local-first application for turning long-form video and po
 
 ## Current milestone
 
-Producer workflow scaffold with Titan Brain candidate scoring.
+Creator workflow, export packaging, and workspace usage foundations.
 
 The app can now:
 - Create a project through the FastAPI backend.
+- Create a private browser workspace key automatically for the product flow.
+- Meter workspace source minutes and exports per monthly cycle.
+- Enforce free-plan source-minute and export limits at the import/export endpoints used by the web app.
 - Upload a media file or import a direct media link.
 - Validate media with FFprobe when available.
 - Generate transcript data through a provider adapter. Mock is the default provider.
@@ -31,6 +34,22 @@ The app can now:
 - Burn segmented captions into the MP4 when requested.
 - Queue export render jobs for a background worker.
 - Serve MP4, SRT, VTT, and metadata files through API download routes.
+
+## Workspace plans and usage
+
+Titan Clipper now has a plan catalog and workspace quota engine. The browser creates and stores a private workspace key locally, then sends that key with workspace-aware project, source, and export operations.
+
+Current quota configuration is intentionally **non-billing** until a payment provider is connected:
+
+| Plan | Source minutes / month | Exports / month |
+| --- | ---: | ---: |
+| Free | 30 | 5 |
+| Creator | 600 | 120 |
+| Studio | 3,000 | 600 |
+
+The live plan endpoint is `GET /api/v1/plans`. A user workspace can be created at `POST /api/v1/workspaces/bootstrap`; the returned access key is shown once and should be stored securely by a production client. Existing local development can omit a key unless `TITAN_REQUIRE_WORKSPACE_KEY=true` is set. When that variable is true, workspace-aware requests must provide `X-Titan-Workspace-Key`.
+
+This milestone does not process payments. It deliberately does not expose a fake self-serve paid upgrade: connect Stripe or another payment provider before enabling plan changes in production.
 
 ## Stack
 
@@ -257,130 +276,3 @@ Whisper model choices include `tiny`, `base`, `small`, `medium`, and `large`. St
 ## Local database reset during scaffold development
 
 Prefer Alembic migrations first. If the local SQLite database is badly out of sync during scaffold development, a reset is still available.
-
-From `bpc-clipper/services/api`:
-
-```bash
-rm -f bpc_clipper.db
-alembic upgrade head
-```
-
-Then restart the API:
-
-```bash
-uvicorn main:app --reload --port 8000
-```
-
-On Windows PowerShell:
-
-```powershell
-Remove-Item .\bpc_clipper.db -ErrorAction SilentlyContinue
-alembic upgrade head
-uvicorn main:app --reload --port 8000
-```
-
-This deletes local scaffold data only. Do not use this reset approach for production data.
-
-## Run the web app locally
-
-From `bpc-clipper/apps/web`:
-
-```bash
-npm install
-npm run dev
-```
-
-Then open:
-
-```text
-http://localhost:3000
-```
-
-## Connected UI flow
-
-1. Start the API.
-2. Start the web app.
-3. Open `/new-project`.
-4. Enter a project name.
-5. Choose upload or paste a direct media link.
-6. Confirm permission.
-7. Submit.
-8. Open Producer Mode from the result.
-9. Review or rescore candidates with Titan Brain.
-10. Click `Approve + Render` on a candidate.
-11. Open the generated MP4/SRT/VTT/metadata links.
-
-## End-to-end pipeline check
-
-Start the API first, then from `bpc-clipper` run:
-
-```bash
-node scripts/check-pipeline.mjs
-```
-
-Optionally provide your own direct media URL:
-
-```bash
-DIRECT_MEDIA_URL="https://example.com/video.mp4" node scripts/check-pipeline.mjs
-```
-
-Or point the script at a different API host:
-
-```bash
-API_BASE_URL="http://localhost:8000/api/v1" node scripts/check-pipeline.mjs
-```
-
-The script will:
-
-1. Create a project.
-2. Import a direct media URL.
-3. Generate a mock transcript.
-4. Generate candidates.
-5. Approve the top candidate.
-6. Create a vertical export.
-7. Render the export.
-8. Print MP4, SRT, VTT, and metadata download URLs.
-
-## Real transcription check
-
-Use this after creating a project/source through the UI or pipeline script.
-
-With a known source ID:
-
-```bash
-SOURCE_ID="your-source-id" TRANSCRIPTION_PROVIDER=whisper node scripts/check-real-transcript.mjs
-```
-
-Or with a project ID, using that project's newest source:
-
-```bash
-PROJECT_ID="your-project-id" TRANSCRIPTION_PROVIDER=whisper node scripts/check-real-transcript.mjs
-```
-
-For a mock check through the real transcript endpoint:
-
-```bash
-SOURCE_ID="your-source-id" TRANSCRIPTION_PROVIDER=mock node scripts/check-real-transcript.mjs
-```
-
-## Export download routes
-
-For any completed export:
-
-```text
-GET /api/v1/exports/{export_id}/files/video
-GET /api/v1/exports/{export_id}/files/srt
-GET /api/v1/exports/{export_id}/files/vtt
-GET /api/v1/exports/{export_id}/files/metadata
-```
-
-## First MVP target
-
-A user can create a project, add a source, generate candidates, inspect Titan Brain scores, approve one, render a vertical clip with captions, and open the generated output files from Producer Mode.
-
-## Next engineering targets
-
-- Add better caption timing from transcript words.
-- Add smart crop/face tracking.
-- Add render progress polling.
-- Add AI copy packages for approved clips.

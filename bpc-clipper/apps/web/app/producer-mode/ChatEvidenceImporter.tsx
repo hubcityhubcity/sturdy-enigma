@@ -69,11 +69,12 @@ export function ChatEvidenceImporter({ projectId }: { projectId?: string }) {
   }, [rawJson]);
 
   useEffect(() => {
-    if (!projectId) return;
+    const activeProjectId = projectId || '';
+    if (!activeProjectId) return;
     let cancelled = false;
     async function loadSources() {
       try {
-        const result = await listSources(projectId);
+        const result = await listSources(activeProjectId);
         if (cancelled) return;
         setSources(result.sources);
         setSourceId(result.sources[result.sources.length - 1]?.source_id || '');

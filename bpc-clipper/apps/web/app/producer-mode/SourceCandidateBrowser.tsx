@@ -35,11 +35,12 @@ export function SourceCandidateBrowser({ projectId }: { projectId?: string }) {
   const [isReranking, setIsReranking] = useState(false);
 
   useEffect(() => {
-    if (!projectId) return;
+    const activeProjectId = projectId || '';
+    if (!activeProjectId) return;
     let cancelled = false;
     async function loadSources() {
       try {
-        const result = await listSources(projectId);
+        const result = await listSources(activeProjectId);
         if (cancelled) return;
         setSources(result.sources);
         const newest = result.sources[result.sources.length - 1];
@@ -62,14 +63,15 @@ export function SourceCandidateBrowser({ projectId }: { projectId?: string }) {
   }, [sourceId]);
 
   useEffect(() => {
-    if (!projectId || !sourceId) { setCandidates([]); setSummary(null); return; }
+    const activeProjectId = projectId || '';
+    if (!activeProjectId || !sourceId) { setCandidates([]); setSummary(null); return; }
     let cancelled = false;
     async function loadSourceReview() {
       setStatus('Loading saved clips and evidence for this source...');
       try {
         const [candidateResult, evidenceResult] = await Promise.all([
-          listSourceCandidates(projectId, sourceId),
-          getGameSenseSummary(projectId, sourceId),
+          listSourceCandidates(activeProjectId, sourceId),
+          getGameSenseSummary(activeProjectId, sourceId),
         ]);
         if (cancelled) return;
         setCandidates(candidateResult.candidates);
