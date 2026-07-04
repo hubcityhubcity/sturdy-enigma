@@ -24,11 +24,13 @@ services:
       DATABASE_URL: postgresql+psycopg://titan:${POSTGRES_PASSWORD}@database:5432/titan_clipper
       STORAGE_ROOT: /data/storage
       WHISPER_DOWNLOAD_ROOT: /data/models
+      VISUAL_MODEL_ROOT: /data/visual-models
     ports:
       - "8000:8000"
     volumes:
       - titan_storage:/data/storage
       - titan_models:/data/models
+      - titan_visual_models:/data/visual-models
     depends_on:
       database:
         condition: service_healthy
@@ -64,3 +66,4 @@ volumes:
   titan_postgres:
   titan_storage:
   titan_models:
+  titan_visual_models:
