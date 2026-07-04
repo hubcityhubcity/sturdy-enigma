@@ -1,15 +1,16 @@
+from pathlib import Path
+
 from sqlalchemy.orm import Session
 
 from models import CandidateClip, EditTimeline, ExportRecord, Source, Transcript, TranscriptSegment, TranscriptWord
 from render_scaffold import render_trimmed_mp4
 
 
-def caption_words_for_edit(db: Session, edit: EditTimeline, source: Source | None) -> list[dict]:
-    """Return timestamped transcript words inside the edit window.
+class RealMediaRenderError(RuntimeError):
+    pass
 
-    Timestamps remain source-relative here. The renderer converts them to clip-relative
-    times because FFmpeg trims the source at ``edit.start_seconds``.
-    """
+
+def caption_words_for_edit(db: Session, edit: EditTimeline, source: Source | None) -> list[dict]:
     if source is None:
         return []
 
@@ -43,11 +44,6 @@ def caption_words_for_edit(db: Session, edit: EditTimeline, source: Source | Non
 
 
 def render_export_with_best_source(db: Session, export: ExportRecord, edit: EditTimeline) -> dict:
-    """Render an export using the candidate-linked source when available.
-
-    Older rows may not have candidate.source_id yet, so the newest project source remains
-    a safe fallback during local development.
-    """
     candidate = db.get(CandidateClip, edit.candidate_clip_id)
     source = None
 
@@ -62,9 +58,15 @@ def render_export_with_best_source(db: Session, export: ExportRecord, edit: Edit
             .first()
         )
 
-    return render_trimmed_mp4(
+    paths = render_trimmed_mp4(
         export,
         edit,
         source,
         caption_words=caption_words_for_edit(db, edit, source),
     )
+    video_path = Path(str(paths.get("video_path") or ""))
+    if video_path.suffix.lower() != ".mp4":
+        raise RealMediaRenderError(
+            "Titan could not create a real MP4 export. Confirm that the source media is available and FFmpeg can render it."
+        )
+    return paths
