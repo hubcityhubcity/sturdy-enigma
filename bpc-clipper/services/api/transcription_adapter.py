@@ -89,7 +89,8 @@ class WhisperTranscriptionProvider:
             raise TranscriptionConfigurationError(
                 "Whisper is selected but not installed. Install requirements-whisper.txt or select a configured transcription provider."
             ) from error
-        self._model = whisper.load_model(self.model_name)
+        model_cache = os.getenv("WHISPER_DOWNLOAD_ROOT", "").strip()
+        self._model = whisper.load_model(self.model_name, download_root=model_cache or None)
         return self._model
 
     def transcribe(self, media_path: Path) -> TranscriptionResult:

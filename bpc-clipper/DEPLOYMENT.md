@@ -14,10 +14,10 @@ This checklist turns the tested MVP into a production service. Complete the real
 
 For a single-host launch, the repository includes:
 
-- `services/api/Dockerfile` — one FFmpeg-equipped image for both API and worker processes.
+- `services/api/Dockerfile` — an FFmpeg and local-Whisper-equipped image for the API and worker processes.
 - `services/api/production_entrypoint.py` — strict configurable CORS for the deployed API.
 - `services/api/render_worker.py` — persistent queue consumer for `render_export` jobs.
-- `docker-compose.production.yml` — PostgreSQL, API, render worker, and web app services with shared media storage.
+- `docker-compose.production.yml` — PostgreSQL, API, render worker, web app, shared media storage, and a persistent local model cache.
 - `.env.production.example` — non-secret environment-variable template.
 
 To run that stack on a server with Docker Compose:
@@ -45,18 +45,21 @@ TITAN_DEVELOPMENT_WORKSPACE_KEY=replace_with_a_long_random_workspace_secret
 RENDER_WORKER_POLL_SECONDS=2
 TRANSCRIPTION_PROVIDER=whisper
 WHISPER_MODEL=base
+WHISPER_DOWNLOAD_ROOT=/data/models
 ```
 
-`TRANSCRIPTION_PROVIDER=mock` is reserved for explicit demo and developer tests. It must never be used to process a creator upload. An unconfigured provider now produces an honest configuration error instead of a fabricated transcript.
+`TRANSCRIPTION_PROVIDER=mock` is reserved for explicit demo and developer tests. It must never be used to process a creator upload. An unconfigured provider produces an honest configuration error instead of a fabricated transcript.
 
 ## 4. Configure real transcription before launch
 
-The repository includes an optional local Whisper adapter in `requirements-whisper.txt`. Before setting `TRANSCRIPTION_PROVIDER=whisper`:
+The API image installs the local Whisper adapter. The first time the selected model is used, it is downloaded into `/data/models`, which Docker Compose keeps in the `titan_models` volume for later requests.
 
-1. Install that optional dependency in the API and worker runtime.
-2. Confirm the selected Whisper model can load in the deployed environment.
+Before allowing creator uploads:
+
+1. Set `TRANSCRIPTION_PROVIDER=whisper` in the private validation environment.
+2. Confirm the selected Whisper model downloads and loads successfully.
 3. Run the real-media validation checklist using an owner-approved test clip.
-4. Confirm transcript text matches the clip’s spoken words before allowing creator uploads.
+4. Confirm transcript text matches the clip’s spoken words before creating candidates.
 
 ## 5. Apply the database schema
 
@@ -72,7 +75,7 @@ The production entrypoint rejects `*` because the API accepts credentialed brows
 
 ## 7. Set up rendering dependencies
 
-The supplied container image includes Python 3.11, FFmpeg, and FFprobe. The API and render worker must share:
+The supplied container image includes Python 3.11, FFmpeg, FFprobe, and the local Whisper adapter. The API and render worker must share:
 
 - the same `DATABASE_URL`
 - the same `STORAGE_ROOT` or durable object-storage implementation
