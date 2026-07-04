@@ -3,8 +3,8 @@ import { ChatEvidenceImporter } from './ChatEvidenceImporter';
 import { ProducerModeClient } from './ProducerModeClient';
 import { SourceCandidateBrowser } from './SourceCandidateBrowser';
 
-export default function ProducerModePage({ searchParams }: { searchParams: { projectId?: string } }) {
-  const projectId = searchParams?.projectId;
+export default async function ProducerModePage({ searchParams }: { searchParams: Promise<{ projectId?: string }> }) {
+  const { projectId } = await searchParams;
 
   return (
     <div className="container">
