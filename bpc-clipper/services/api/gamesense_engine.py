@@ -15,7 +15,7 @@ MODALITY_WEIGHTS = {
     "chat": 0.72,
     "facecam": 0.86,
     "visual": 0.66,
-    "transcript": 0.5,
+    "transcript": 0.50,
 }
 
 EVENT_TYPE_BONUSES = {
@@ -47,6 +47,7 @@ CATEGORY_PRIORITY = [
     ("knockout", "insane_play"),
     ("laugh", "funny_reaction"),
 ]
+WEAK_SINGLE_SIGNAL_TYPES = {"audio_spike", "scene_change", "round_end"}
 
 
 @dataclass(frozen=True)
@@ -82,8 +83,27 @@ def normalized_score(signal: GameSignal) -> float:
     return (intensity * modality_weight * confidence) + event_bonus
 
 
+def signal_midpoint(signal: GameSignal) -> float:
+    return (signal.start_seconds + signal.end_seconds) / 2
+
+
 def signals_overlap_window(anchor: GameSignal, other: GameSignal, seconds: float) -> bool:
     return other.start_seconds <= anchor.end_seconds + seconds and other.end_seconds >= anchor.start_seconds - seconds
+
+
+def strongest_unique_evidence(signals: list[GameSignal], within_seconds: float = 2.0) -> list[GameSignal]:
+    """Avoid counting repeated detector hits as several independent audience reactions."""
+    selected: list[GameSignal] = []
+    for signal in sorted(signals, key=lambda item: (-normalized_score(item), item.start_seconds, item.end_seconds)):
+        duplicate = any(
+            kept.modality == signal.modality
+            and kept.event_type == signal.event_type
+            and abs(signal_midpoint(kept) - signal_midpoint(signal)) <= within_seconds
+            for kept in selected
+        )
+        if not duplicate:
+            selected.append(signal)
+    return sorted(selected, key=lambda item: (item.start_seconds, item.end_seconds))
 
 
 def category_for(signals: list[GameSignal]) -> str:
@@ -100,10 +120,11 @@ def category_for(signals: list[GameSignal]) -> str:
     return "gameplay_moment"
 
 
-def describe(signals: list[GameSignal]) -> str:
+def describe(signals: list[GameSignal], score_parts: list[str]) -> str:
     modalities = sorted({signal.modality for signal in signals})
     event_types = sorted({signal.event_type.replace("_", " ") for signal in signals})
-    return f"{len(signals)} aligned signal(s): {', '.join(event_types)} across {', '.join(modalities)}."
+    evidence_summary = f"{len(signals)} independent signal(s): {', '.join(event_types)} across {', '.join(modalities)}."
+    return f"{evidence_summary} {'; '.join(score_parts)}"
 
 
 def overlap_ratio(first: GameMoment, second: GameMoment) -> float:
@@ -137,34 +158,66 @@ def build_gamesense_moments(
 ) -> list[GameMoment]:
     """Fuse nearby cross-modal signals into ranked gaming clip candidates.
 
-    Each signal can anchor a candidate, but overlapping candidates are collapsed so a
-    clutch plus scream plus chat burst becomes one clean highlight rather than four
-    slightly different versions of the same clip.
+    A strong moment earns points for a meaningful anchor, independent corroboration,
+    cross-modal agreement, and tight timing. Repeated hits from the same detector no
+    longer inflate the score as though they were separate audience reactions.
     """
     ordered = sorted(signals, key=lambda item: (item.start_seconds, item.end_seconds))
     moments: list[GameMoment] = []
 
     for anchor in ordered:
         nearby = [signal for signal in ordered if signals_overlap_window(anchor, signal, fusion_window_seconds)]
+        evidence = strongest_unique_evidence(nearby)
+        supports = [signal for signal in evidence if signal is not anchor]
         raw_score = normalized_score(anchor)
-        raw_score += sum(normalized_score(signal) * 0.35 for signal in nearby if signal is not anchor)
-        modalities = {signal.modality for signal in nearby}
-        raw_score += max(0, len(modalities) - 1) * 8
-        if "gameplay" in modalities and ("audio" in modalities or "facecam" in modalities or "chat" in modalities or "visual" in modalities):
+        score_parts = ["meaningful anchor signal"]
+
+        for index, signal in enumerate(sorted(supports, key=normalized_score, reverse=True)[:4]):
+            raw_score += normalized_score(signal) * (0.32 if index == 0 else 0.18 if index == 1 else 0.10)
+        if supports:
+            score_parts.append(f"{len(supports)} corroborating signal(s)")
+
+        modalities = {signal.modality for signal in evidence}
+        modality_count = len(modalities)
+        if modality_count >= 2:
+            raw_score += (modality_count - 1) * 8
+            score_parts.append(f"{modality_count}-modality agreement")
+        if "gameplay" in modalities and ("audio" in modalities or "facecam" in modalities or "chat" in modalities):
             raw_score += 10
+            score_parts.append("gameplay confirmed by reaction evidence")
+
+        evidence_confidence = sum(max(0.0, min(signal.confidence, 1.0)) for signal in evidence) / max(1, len(evidence))
+        if evidence_confidence >= 0.80:
+            raw_score += 6
+            score_parts.append("high-confidence evidence")
+        elif evidence_confidence < 0.45:
+            raw_score -= 10
+            score_parts.append("low-confidence evidence penalty")
+
+        midpoint_spread = max(signal_midpoint(signal) for signal in evidence) - min(signal_midpoint(signal) for signal in evidence)
+        if len(evidence) > 1 and midpoint_spread <= 2.5:
+            raw_score += 7
+            score_parts.append("tightly aligned timing")
+        elif midpoint_spread > fusion_window_seconds:
+            raw_score -= 6
+            score_parts.append("loose timing penalty")
+
+        if len(evidence) == 1 and anchor.event_type in WEAK_SINGLE_SIGNAL_TYPES:
+            raw_score -= 14
+            score_parts.append("single weak detector signal penalty")
 
         score = clamp(raw_score)
         if score < min_score:
             continue
         start = max(0.0, round(anchor.start_seconds - setup_seconds, 3))
-        end = round(max(anchor.end_seconds, max(signal.end_seconds for signal in nearby)) + reaction_seconds, 3)
+        end = round(max(anchor.end_seconds, max(signal.end_seconds for signal in evidence)) + reaction_seconds, 3)
         moments.append(GameMoment(
             start_seconds=start,
             end_seconds=end,
             score=score,
-            category=category_for(nearby),
-            explanation=describe(nearby),
-            evidence=nearby,
+            category=category_for(evidence),
+            explanation=describe(evidence, score_parts),
+            evidence=evidence,
         ))
 
     return suppress_near_duplicate_moments(moments)
