@@ -1,0 +1,52 @@
+services:
+  database:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: titan_clipper
+      POSTGRES_USER: titan
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env.production}
+    volumes:
+      - titan_postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U titan -d titan_clipper"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: ./services/api
+    restart: unless-stopped
+    env_file:
+      - ./.env.production
+    environment:
+      DATABASE_URL: postgresql+psycopg://titan:${POSTGRES_PASSWORD}@database:5432/titan_clipper
+      STORAGE_ROOT: /data/storage
+    ports:
+      - "8000:8000"
+    volumes:
+      - titan_storage:/data/storage
+    depends_on:
+      database:
+        condition: service_healthy
+
+  render-worker:
+    build:
+      context: ./services/api
+    command: ["python", "render_worker.py"]
+    restart: unless-stopped
+    env_file:
+      - ./.env.production
+    environment:
+      DATABASE_URL: postgresql+psycopg://titan:${POSTGRES_PASSWORD}@database:5432/titan_clipper
+      STORAGE_ROOT: /data/storage
+    volumes:
+      - titan_storage:/data/storage
+    depends_on:
+      database:
+        condition: service_healthy
+
+volumes:
+  titan_postgres:
+  titan_storage:
