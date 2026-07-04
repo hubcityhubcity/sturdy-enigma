@@ -37,22 +37,22 @@ class VisualEditingTests(unittest.TestCase):
 
     def test_primary_focus_resists_a_weaker_challenger(self):
         shots = build_shots(8.0, [(4.0, 0.9)])
-        observations = assign_face_tracks([
-            FaceObservation(0.5, FaceBox(0.20, 0.2, 0.24, 0.24, 0.95)),
-            FaceObservation(0.5, FaceBox(0.62, 0.2, 0.20, 0.20, 0.95)),
-            FaceObservation(4.5, FaceBox(0.23, 0.2, 0.22, 0.22, 0.95)),
-            FaceObservation(4.5, FaceBox(0.62, 0.2, 0.23, 0.23, 0.95)),
-        ])
+        observations = [
+            FaceObservation(0.5, FaceBox(0.20, 0.2, 0.24, 0.24, 0.95), "face_1"),
+            FaceObservation(0.5, FaceBox(0.62, 0.2, 0.20, 0.20, 0.95), "face_2"),
+            FaceObservation(4.5, FaceBox(0.23, 0.2, 0.22, 0.22, 0.95), "face_1"),
+            FaceObservation(4.5, FaceBox(0.62, 0.2, 0.23, 0.23, 0.95), "face_2"),
+        ]
         primary = choose_primary_tracks(observations, shots)
         self.assertEqual(primary[0], "face_1")
         self.assertEqual(primary[1], "face_1")
 
     def test_crop_keyframes_limit_reframing_speed(self):
         shots = build_shots(2.0, [])
-        observations = assign_face_tracks([
-            FaceObservation(0.1, FaceBox(0.05, 0.2, 0.20, 0.20)),
-            FaceObservation(1.9, FaceBox(0.80, 0.2, 0.20, 0.20)),
-        ])
+        observations = [
+            FaceObservation(0.1, FaceBox(0.05, 0.2, 0.20, 0.20), "face_1"),
+            FaceObservation(1.9, FaceBox(0.80, 0.2, 0.20, 0.20), "face_1"),
+        ]
         primary = {0: "face_1"}
         keyframes = build_crop_keyframes(observations, shots, primary, max_pan_per_second=0.10)
         self.assertEqual(len(keyframes), 2)
