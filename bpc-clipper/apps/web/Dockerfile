@@ -2,8 +2,6 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-ENV NODE_ENV=production
-
 COPY package.json ./
 RUN npm install
 
@@ -13,6 +11,8 @@ ARG NEXT_PUBLIC_API_BASE_URL
 ENV NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL}
 
 RUN npm run build
+
+ENV NODE_ENV=production
 
 EXPOSE 3000
 
