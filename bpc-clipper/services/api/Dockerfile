@@ -11,7 +11,7 @@ RUN apt-get update \
     && apt-get install --yes --no-install-recommends ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt ./
+COPY requirements.txt requirements-whisper.txt ./
 RUN pip install --upgrade pip && pip install -r requirements.txt
 
 COPY . ./
