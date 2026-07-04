@@ -8,8 +8,12 @@ from local_storage import STORAGE_ROOT
 from models import EditTimeline, ExportRecord, Source
 
 
+class SpeakerFocusPlanRequiredError(RuntimeError):
+    """Raised when a render claims speaker focus without visual-analysis evidence."""
+
+
 CROP_MODE_ALIASES = {
-    "speaker_focus": "center_focus",
+    "speaker_focus": "speaker_focus",
     "center": "center_focus",
     "center_focus": "center_focus",
     "left": "left_focus",
@@ -99,10 +103,15 @@ def resolve_crop_mode(crop_mode: str | None) -> str:
 def crop_filter_for_mode(crop_mode: str | None) -> str:
     """Return a 9:16 FFmpeg crop expression after scale-to-fill.
 
-    These are deterministic framing presets. Future face tracking can write a dynamic
-    crop path into the same render pipeline without changing export contracts.
+    Manual presets remain deterministic. ``speaker_focus`` is intentionally not allowed
+    through this path: the previous implementation silently substituted a center crop and
+    produced output that looked like failed face tracking.
     """
     mode = resolve_crop_mode(crop_mode)
+    if mode == "speaker_focus":
+        raise SpeakerFocusPlanRequiredError(
+            "Speaker Focus requires a completed Titan visual-edit plan. Choose a manual crop preset or run visual analysis first."
+        )
     if mode == "left_focus":
         return "crop=1080:1920:0:(ih-oh)/2"
     if mode == "right_focus":
