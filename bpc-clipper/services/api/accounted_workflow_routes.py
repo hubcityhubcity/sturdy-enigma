@@ -9,7 +9,6 @@ from link_importer import import_direct_media_url
 from local_storage import save_uploaded_file
 from media_probe import probe_media
 from models import EditTimeline, ExportRecord, Job, Project, Source
-from render_scaffold import create_placeholder_export_files
 from workspace_billing import claim_project, enforce_export_quota, enforce_source_quota, require_project
 from workspace_routes import current_workspace
 
@@ -119,21 +118,9 @@ def create_workspace_export(edit_id: str, payload: AccountExportCreate, workspac
         raise HTTPException(status_code=404, detail="edit_not_found")
     require_project(db, workspace, edit.project_id)
     enforce_export_quota(db, workspace)
-    export = ExportRecord(id=str(uuid4()), project_id=edit.project_id, edit_timeline_id=edit.id, status="queued", format=payload.format, include_burned_captions=payload.include_burned_captions, include_srt=payload.include_srt, include_vtt=payload.include_vtt, include_metadata=payload.include_metadata)
+    export = ExportRecord(id=str(uuid4()), project_id=edit.project_id, edit_timeline_id=edit.id, status="ready_to_render", format=payload.format, include_burned_captions=payload.include_burned_captions, include_srt=payload.include_srt, include_vtt=payload.include_vtt, include_metadata=payload.include_metadata)
     db.add(export)
-    db.flush()
-    try:
-        paths = create_placeholder_export_files(export, edit)
-        export.video_path = paths["video_path"]
-        export.srt_path = paths["srt_path"]
-        export.vtt_path = paths["vtt_path"]
-        export.metadata_path = paths["metadata_path"]
-        export.status = "placeholder_complete"
-        edit.status = "export_placeholder_complete"
-    except Exception as error:
-        export.status = "failed"
-        export.error_message = str(error)
-        edit.status = "export_failed"
+    edit.status = "ready_to_render"
     db.commit()
     db.refresh(export)
     return serialize_export(export)
