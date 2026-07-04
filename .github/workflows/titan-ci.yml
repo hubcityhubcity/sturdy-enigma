@@ -101,7 +101,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Validate production stack configuration
-        run: set -o pipefail; docker compose --env-file bpc-clipper/.env.production.example -f bpc-clipper/docker-compose.production.yml config 2>&1 | tee compose.log
+        run: cp bpc-clipper/.env.production.example bpc-clipper/.env.production && set -o pipefail; docker compose --env-file bpc-clipper/.env.production -f bpc-clipper/docker-compose.production.yml config 2>&1 | tee compose.log
 
       - name: Upload failed compose validation log
         if: failure()
