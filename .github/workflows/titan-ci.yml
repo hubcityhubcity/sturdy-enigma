@@ -69,3 +69,14 @@ jobs:
           name: titan-web-build-log
           path: bpc-clipper/apps/web/build.log
           if-no-files-found: error
+
+  api-container-build:
+    name: API container build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Build API and worker image
+        run: docker build --tag titan-clipper-api:ci bpc-clipper/services/api
