@@ -1,0 +1,63 @@
+name: Titan Clipper CI
+
+on:
+  pull_request:
+    branches:
+      - bpc-foundation
+
+  push:
+    branches:
+      - bpc-foundation
+      - titan-clipper-publishing-package
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  api-tests:
+    name: API tests
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: bpc-clipper/services/api
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install API dependencies
+        run: python -m pip install --upgrade pip && pip install -r requirements.txt
+
+      - name: Run API tests
+        run: python -m unittest discover -s . -p "test_*.py" -v
+
+  web-build:
+    name: Web build
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: bpc-clipper/apps/web
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install web dependencies
+        run: npm install
+
+      - name: Build web app
+        run: npm run build
