@@ -80,3 +80,25 @@ jobs:
 
       - name: Build API and worker image
         run: docker build --tag titan-clipper-api:ci bpc-clipper/services/api
+
+  web-container-build:
+    name: Web container build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Build web image
+        run: docker build --build-arg NEXT_PUBLIC_API_BASE_URL=https://api.example.com/api/v1 --tag titan-clipper-web:ci bpc-clipper/apps/web
+
+  compose-config:
+    name: Production compose validation
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Validate production stack configuration
+        run: docker compose --env-file bpc-clipper/.env.production.example -f bpc-clipper/docker-compose.production.yml config
