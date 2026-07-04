@@ -90,7 +90,15 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Build web image
-        run: docker build --build-arg NEXT_PUBLIC_API_BASE_URL=https://api.example.com/api/v1 --tag titan-clipper-web:ci bpc-clipper/apps/web
+        run: set -o pipefail; docker build --build-arg NEXT_PUBLIC_API_BASE_URL=https://api.example.com/api/v1 --tag titan-clipper-web:ci bpc-clipper/apps/web 2>&1 | tee web-container-build.log
+
+      - name: Upload failed web container log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: titan-web-container-build-log
+          path: web-container-build.log
+          if-no-files-found: error
 
   compose-config:
     name: Production compose validation
