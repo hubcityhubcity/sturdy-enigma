@@ -10,7 +10,7 @@ from gamesense_summary_routes import router as gamesense_summary_router
 from gamesense_visual_routes import router as gamesense_visual_router
 from models import CandidateClip, Transcript, TranscriptSegment
 from publishing_routes import router as publishing_router
-from scoring_engine import score_segment
+from scoring_engine import risk_flags_for_breakdown, score_segment
 from source_candidate_routes import router as source_candidate_router
 from workspace_routes import router as workspace_router
 
@@ -91,6 +91,7 @@ def rescore_project_candidates(project_id: str, db: Session = Depends(get_db)):
         breakdown = score.as_dict()
         candidate.score = breakdown["overall"]["score"]
         candidate.score_breakdown = breakdown
+        candidate.risk_flags = risk_flags_for_breakdown(breakdown)
         candidate.category = category_from_breakdown(breakdown)
         candidate.explanation = breakdown["overall"]["explanation"]
         updated.append(candidate)
