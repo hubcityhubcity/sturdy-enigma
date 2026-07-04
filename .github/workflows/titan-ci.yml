@@ -81,6 +81,9 @@ jobs:
       - name: Build API and worker image
         run: docker build --tag titan-clipper-api:ci bpc-clipper/services/api
 
+      - name: Run real MP4 render smoke test
+        run: docker run --rm -e STORAGE_ROOT=/tmp/titan-real-media-smoke titan-clipper-api:ci python -m unittest test_real_mp4_render -v
+
   web-container-build:
     name: Web container build
     runs-on: ubuntu-latest
