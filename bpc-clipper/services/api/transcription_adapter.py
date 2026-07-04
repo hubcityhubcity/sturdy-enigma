@@ -6,6 +6,10 @@ from typing import Any, Protocol
 from mock_transcript import get_mock_segments, word_timings_for_segment
 
 
+class TranscriptionConfigurationError(RuntimeError):
+    """Raised when Titan would otherwise fabricate a transcript from demo data."""
+
+
 @dataclass
 class TranscribedWord:
     start_seconds: float
@@ -40,7 +44,9 @@ class TranscriptionProvider(Protocol):
 
 
 class MockTranscriptionProvider:
-    name = "mock"
+    """Explicit demo-only provider. Never select this automatically for user media."""
+
+    name = "mock_demo"
 
     def transcribe(self, media_path: Path) -> TranscriptionResult:
         segments: list[TranscribedSegment] = []
@@ -80,8 +86,8 @@ class WhisperTranscriptionProvider:
         try:
             import whisper  # type: ignore
         except ImportError as error:
-            raise RuntimeError(
-                "Whisper is not installed. Run `pip install -r requirements-whisper.txt` or use TRANSCRIPTION_PROVIDER=mock."
+            raise TranscriptionConfigurationError(
+                "Whisper is selected but not installed. Install requirements-whisper.txt or select a configured transcription provider."
             ) from error
         self._model = whisper.load_model(self.model_name)
         return self._model
@@ -132,7 +138,13 @@ class WhisperTranscriptionProvider:
 
 
 def get_transcription_provider(provider_name: str | None = None) -> TranscriptionProvider:
-    selected_provider = provider_name or os.getenv("TRANSCRIPTION_PROVIDER", "mock")
+    selected_provider = (provider_name or os.getenv("TRANSCRIPTION_PROVIDER", "")).strip().lower()
+    if selected_provider in {"mock", "demo", "mock_demo"}:
+        return MockTranscriptionProvider()
     if selected_provider == "whisper":
         return WhisperTranscriptionProvider()
-    return MockTranscriptionProvider()
+    if not selected_provider or selected_provider in {"unconfigured", "disabled", "none"}:
+        raise TranscriptionConfigurationError(
+            "Real transcription is not configured. Set TRANSCRIPTION_PROVIDER=whisper and install requirements-whisper.txt before analyzing uploaded media."
+        )
+    raise TranscriptionConfigurationError(f"Unsupported transcription provider: {selected_provider}")
