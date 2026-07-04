@@ -25,12 +25,13 @@ export function GameSenseEvidencePanel({
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
-    if (!projectId) { setSummary(null); return; }
+    const activeProjectId = projectId || '';
+    if (!activeProjectId) { setSummary(null); return; }
     let cancelled = false;
     async function load() {
       setIsLoading(true); setError('');
       try {
-        const next = await getGameSenseSummary(projectId, sourceId);
+        const next = await getGameSenseSummary(activeProjectId, sourceId);
         if (!cancelled) setSummary(next);
       } catch (caught) {
         if (!cancelled) setError(caught instanceof Error ? caught.message : 'Unable to load GameSense evidence.');
